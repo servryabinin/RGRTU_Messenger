@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="RGRTU.Messenger.Client/RGRTU.Messenger.Client.csproj" />
+  <Project Path="RGRTU.Messenger.Server/RGRTU.Messenger.Server.csproj" />
+  <Project Path="RGRTU.Messenger.Shared/RGRTU.Messenger.Shared.csproj" />
+</Solution>
