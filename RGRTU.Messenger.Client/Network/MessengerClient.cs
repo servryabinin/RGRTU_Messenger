@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using RGRTU.Messenger.Shared.Models.DTO;
+using RGRTU.Messenger.Shared.Models.DTO.Admin;
+using RGRTU.Messenger.Shared.Models.DTO.Enums;
 using RGRTU.Messenger.Shared.Network;
 using Serilog;
 
@@ -52,6 +55,21 @@ namespace RGRTU.Messenger.Client.Network
         /// Событие, вызываемое при неожиданном разрыве соединения с сервером.
         /// </summary>
         public event Action OnDisconnected;
+
+        /// <summary>
+        /// Событие получения списка пользователей для админской таблицы.
+        /// </summary>
+        public event Action<AdminUsersResponseDto> OnAdminUsersReceived;
+
+        /// <summary>
+        /// Событие завершения административной операции.
+        /// </summary>
+        public event Action<AdminActionResponseDto> OnAdminActionCompleted;
+
+        /// <summary>
+        /// Семафор, гарантирующий, что запись в сетевой поток не будет перемешана разными потоками UI.
+        /// </summary>
+        private readonly SemaphoreSlim _sendLock = new(1, 1);
 
         /// <summary>
         /// Получает значение, указывающее, установлено ли в данный момент активное соединение с сервером.
@@ -110,7 +128,17 @@ namespace RGRTU.Messenger.Client.Network
             }
 
             byte[] packetData = PacketSerializer.Serialize(type, payload);
-            await _stream.WriteAsync(packetData, 0, packetData.Length);
+
+            await _sendLock.WaitAsync();
+            try
+            {
+                await _stream.WriteAsync(packetData, 0, packetData.Length);
+            }
+            finally
+            {
+                _sendLock.Release();
+            }
+
             Log.Debug("Отправлен пакет типа {Type}", type);
         }
 
@@ -149,6 +177,16 @@ namespace RGRTU.Messenger.Client.Network
                             var error = PacketSerializer.DeserializePayload<ErrorDto>(payloadJson);
                             OnAuthFailed?.Invoke(error.Message);
                             break;
+
+                        case MessageType.AdminUsersResponse:
+                            var users = PacketSerializer.DeserializePayload<AdminUsersResponseDto>(payloadJson);
+                            OnAdminUsersReceived?.Invoke(users);
+                            break;
+
+                        case MessageType.AdminActionResponse:
+                            var actionResult = PacketSerializer.DeserializePayload<AdminActionResponseDto>(payloadJson);
+                            OnAdminActionCompleted?.Invoke(actionResult);
+                            break;
                     }
                 }
             }
@@ -162,6 +200,64 @@ namespace RGRTU.Messenger.Client.Network
                 Log.Information("Клиент отключен от сервера");
                 OnDisconnected?.Invoke();
             }
+        }
+
+        /// <summary>
+        /// Отправляет запрос на смену собственного статуса.
+        /// </summary>
+        public Task SetUserStatusAsync(int userId, UserStatus status)
+        {
+            return SendPacketAsync(MessageType.SetUserStatus, new UserStatusDto
+            {
+                UserId = userId,
+                Username = string.Empty,
+                Status = status
+            });
+        }
+
+        /// <summary>
+        /// Запрашивает список пользователей для админской панели.
+        /// </summary>
+        public Task RequestAdminUsersAsync()
+        {
+            return SendPacketAsync(MessageType.AdminGetUsers, new { });
+        }
+
+        /// <summary>
+        /// Отправляет запрос на создание пользователя.
+        /// </summary>
+        public Task CreateAdminUserAsync(AdminCreateUserRequestDto request)
+        {
+            return SendPacketAsync(MessageType.AdminCreateUser, request);
+        }
+
+        /// <summary>
+        /// Отправляет запрос на редактирование пользователя.
+        /// </summary>
+        public Task UpdateAdminUserAsync(AdminUpdateUserRequestDto request)
+        {
+            return SendPacketAsync(MessageType.AdminUpdateUser, request);
+        }
+
+        /// <summary>
+        /// Отправляет запрос на удаление пользователя.
+        /// </summary>
+        public Task DeleteAdminUserAsync(int userId)
+        {
+            return SendPacketAsync(MessageType.AdminDeleteUser, new AdminDeleteUserRequestDto { Id = userId });
+        }
+
+        /// <summary>
+        /// Отправляет запрос на блокировку или разблокировку пользователя.
+        /// </summary>
+        public Task SetAdminUserBlockedAsync(int userId, bool isBlocked, string reason)
+        {
+            return SendPacketAsync(MessageType.AdminBlockUser, new AdminBlockUserRequestDto
+            {
+                Id = userId,
+                IsBlocked = isBlocked,
+                Reason = reason
+            });
         }
 
         /// <summary>

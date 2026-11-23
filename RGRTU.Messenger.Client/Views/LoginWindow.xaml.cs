@@ -1,9 +1,8 @@
 ﻿using System;
-using System.Security.Cryptography;
-using System.Text;
 using System.Windows;
 using RGRTU.Messenger.Client.Configuration;
 using RGRTU.Messenger.Client.Network;
+using RGRTU.Messenger.Client.Security;
 using RGRTU.Messenger.Shared.Models.DTO;
 using RGRTU.Messenger.Shared.Network;
 using Serilog;
@@ -79,7 +78,7 @@ namespace RGRTU.Messenger.Client.Views
                 return;
             }
 
-            string passwordHash = ComputeSha256Hash(password);
+            string passwordHash = ClientPasswordHasher.Sha256Hex(password);
             Log.Debug("Пароль хэширован, отправка запроса авторизации");
 
             var authRequest = new AuthRequestDto { Login = login, PasswordHash = passwordHash };
@@ -96,6 +95,11 @@ namespace RGRTU.Messenger.Client.Views
             Dispatcher.Invoke(() =>
             {
                 Log.Information("Успешная авторизация пользователя: {Username} (Admin: {IsAdmin})", response.Username, response.IsAdmin);
+
+                // Окно входа больше не должно обрабатывать события этого клиента.
+                _client.OnAuthSuccess -= Client_OnAuthSuccess;
+                _client.OnAuthFailed -= Client_OnAuthFailed;
+
                 var mainWindow = new MainWindow(_client, response);
                 mainWindow.Show();
                 this.Close();
@@ -152,22 +156,5 @@ namespace RGRTU.Messenger.Client.Views
             ErrorTextBlock.Visibility = Visibility.Visible;
         }
 
-        /// <summary>
-        /// Вычисляет криптографический хэш SHA-256 для переданной строки.
-        /// Используется для безопасной передачи пароля по сети в зашифрованном виде.
-        /// </summary>
-        /// <param name="rawData">Исходная строка (пароль в открытом виде).</param>
-        /// <returns>Строковое представление хэша в шестнадцатеричном формате (нижний регистр).</returns>
-        private string ComputeSha256Hash(string rawData)
-        {
-            using SHA256 sha256Hash = SHA256.Create();
-            byte[] bytes = sha256Hash.ComputeHash(Encoding.UTF8.GetBytes(rawData));
-            StringBuilder builder = new StringBuilder();
-            foreach (byte t in bytes)
-            {
-                builder.Append(t.ToString("x2"));
-            }
-            return builder.ToString();
-        }
     }
 }

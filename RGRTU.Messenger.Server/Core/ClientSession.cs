@@ -3,7 +3,9 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using RGRTU.Messenger.Server.Data;
+using RGRTU.Messenger.Shared.Extensions;
 using RGRTU.Messenger.Shared.Models.DTO;
+using RGRTU.Messenger.Shared.Models.DTO.Admin;
 using RGRTU.Messenger.Shared.Models.DTO.Enums;
 using RGRTU.Messenger.Shared.Network;
 using Serilog;
@@ -58,6 +60,11 @@ namespace RGRTU.Messenger.Server.Core
         public bool IsAuthenticated { get; private set; }
 
         /// <summary>
+        /// Текущий статус пользователя в этой сессии.
+        /// </summary>
+        public UserStatus Status { get; private set; } = UserStatus.Offline;
+
+        /// <summary>
         /// Признак того, что соединение закрыто по инициативе администратора.
         /// </summary>
         private int _closedByAdmin;
@@ -105,6 +112,7 @@ namespace RGRTU.Messenger.Server.Core
             {
                 if (IsAuthenticated)
                 {
+                    Status = UserStatus.Offline;
                     await _server.BroadcastStatusAsync(UserId, Username, UserStatus.Offline);
                 }
 
@@ -130,6 +138,48 @@ namespace RGRTU.Messenger.Server.Core
 
                 case MessageType.KickUser:
                     await HandleKickAsync(json);
+                    break;
+
+                case MessageType.SetUserStatus:
+                    await HandleSetStatusAsync(json);
+                    break;
+
+                case MessageType.AdminGetUsers:
+                    await SendPacketAsync(PacketSerializer.Serialize(
+                        MessageType.AdminUsersResponse,
+                        await _server.Admin.GetUsersAsync(this)));
+                    break;
+
+                case MessageType.AdminCreateUser:
+                    await SendPacketAsync(PacketSerializer.Serialize(
+                        MessageType.AdminActionResponse,
+                        await _server.Admin.CreateAsync(
+                            this,
+                            PacketSerializer.DeserializePayload<AdminCreateUserRequestDto>(json))));
+                    break;
+
+                case MessageType.AdminUpdateUser:
+                    await SendPacketAsync(PacketSerializer.Serialize(
+                        MessageType.AdminActionResponse,
+                        await _server.Admin.UpdateAsync(
+                            this,
+                            PacketSerializer.DeserializePayload<AdminUpdateUserRequestDto>(json))));
+                    break;
+
+                case MessageType.AdminDeleteUser:
+                    await SendPacketAsync(PacketSerializer.Serialize(
+                        MessageType.AdminActionResponse,
+                        await _server.Admin.DeleteAsync(
+                            this,
+                            PacketSerializer.DeserializePayload<AdminDeleteUserRequestDto>(json))));
+                    break;
+
+                case MessageType.AdminBlockUser:
+                    await SendPacketAsync(PacketSerializer.Serialize(
+                        MessageType.AdminActionResponse,
+                        await _server.Admin.SetBlockedAsync(
+                            this,
+                            PacketSerializer.DeserializePayload<AdminBlockUserRequestDto>(json))));
                     break;
 
                 case MessageType.Ping:
@@ -188,6 +238,34 @@ namespace RGRTU.Messenger.Server.Core
         }
 
         /// <summary>
+        /// Меняет статус текущей сессии и рассылает обновление всем клиентам.
+        /// </summary>
+        private async Task HandleSetStatusAsync(string json)
+        {
+            if (!IsAuthenticated)
+            {
+                Log.Warning("Попытка смены статуса неавторизованным клиентом {Id}", Id);
+                return;
+            }
+
+            var request = PacketSerializer.DeserializePayload<UserStatusDto>(json);
+
+            // Игнорируем чужой UserId: статус меняется только у текущей сессии.
+            if (request.UserId != 0 && request.UserId != UserId)
+            {
+                Log.Warning("Клиент {Id} попытался изменить статус другого пользователя {Target}", Id, request.UserId);
+                return;
+            }
+
+            if (request.Status == UserStatus.Offline)
+                return;
+
+            Status = request.Status;
+            Log.Information("Пользователь {User} сменил статус на {Status}", Username, Status.GetDescription());
+            await _server.BroadcastStatusAsync(UserId, Username, Status);
+        }
+
+        /// <summary>
         /// Обрабатывает запрос на авторизацию пользователя.
         /// </summary>
         private async Task HandleAuthAsync(string json)
@@ -234,6 +312,7 @@ namespace RGRTU.Messenger.Server.Core
                     UserId = user!.Id;
                     Username = user.DisplayName;
                     Role = user.Role;
+                    Status = UserStatus.Online;
 
                     await _server.Users.UpdateLastLoginAsync(user.Id);
 
@@ -241,6 +320,7 @@ namespace RGRTU.Messenger.Server.Core
                     {
                         IsSuccess = true,
                         UserId = user.Id,
+                        Login = user.Login,
                         Username = user.DisplayName,
                         IsAdmin = user.Role == UserRole.Admin,
                         ErrorMessage = string.Empty

@@ -45,6 +45,11 @@ namespace RGRTU.Messenger.Server.Core
         public UserRepository Users { get; }
 
         /// <summary>
+        /// Обработчик административных запросов от графического клиента.
+        /// </summary>
+        public AdminRequestHandler Admin { get; }
+
+        /// <summary>
         /// Инициализирует новый экземпляр сервера.
         /// </summary>
         /// <param name="port">Порт для прослушивания входящих подключений.</param>
@@ -54,6 +59,7 @@ namespace RGRTU.Messenger.Server.Core
             _port = port;
             _listener = new TcpListener(IPAddress.Any, _port);
             Users = users;
+            Admin = new AdminRequestHandler(this, users);
         }
 
         /// <summary>
@@ -126,6 +132,24 @@ namespace RGRTU.Messenger.Server.Core
                 .ToList();
 
             return Task.FromResult(sessions);
+        }
+
+        /// <summary>
+        /// Возвращает текущий статус пользователя по его активным сессиям.
+        /// </summary>
+        public UserStatus GetUserStatus(int userId)
+        {
+            var statuses = _activeClients.Values
+                .Where(s => s.IsAuthenticated && s.UserId == userId)
+                .Select(s => s.Status)
+                .ToArray();
+
+            if (statuses.Length == 0)
+                return UserStatus.Offline;
+
+            return statuses.Contains(UserStatus.Online)
+                ? UserStatus.Online
+                : statuses[0];
         }
 
         /// <summary>

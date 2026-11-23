@@ -25,7 +25,12 @@ namespace RGRTU.Messenger.Shared.Models.DTO
         public int UserId { get; set; }
 
         /// <summary>
-        /// Имя пользователя
+        /// Логин пользователя, под которым выполнен вход
+        /// </summary>
+        public string Login { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Имя пользователя (отображается в чате)
         /// </summary>
         public string Username { get; set; }
 

@@ -222,7 +222,7 @@ UPDATE Users
 SET IsBlocked = $blocked, BlockReason = $reason
 WHERE Id = $id;";
             command.Parameters.AddWithValue("$blocked", blocked ? 1 : 0);
-            command.Parameters.AddWithValue("$reason", blocked ? reason : null);
+            command.Parameters.AddWithValue("$reason", blocked && reason is not null ? reason : DBNull.Value);
             command.Parameters.AddWithValue("$id", id);
 
             return await command.ExecuteNonQueryAsync() > 0;

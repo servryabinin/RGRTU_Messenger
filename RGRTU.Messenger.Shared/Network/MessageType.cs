@@ -53,9 +53,42 @@ namespace RGRTU.Messenger.Shared.Network
         /// </summary>
         UserStatusUpdate = 30,
         /// <summary>
+        /// Клиент -> Сервер: смена собственного статуса (Online/Away/Busy)
+        /// </summary>
+        SetUserStatus = 31,
+        /// <summary>
         /// Админ -> Сервер: Отключить юзера
         /// </summary>
         KickUser = 40,
+
+        /// <summary>
+        /// Админ -> Сервер: запрос списка пользователей
+        /// </summary>
+        AdminGetUsers = 41,
+        /// <summary>
+        /// Сервер -> Админ: список пользователей
+        /// </summary>
+        AdminUsersResponse = 42,
+        /// <summary>
+        /// Админ -> Сервер: создать пользователя
+        /// </summary>
+        AdminCreateUser = 43,
+        /// <summary>
+        /// Админ -> Сервер: обновить пользователя
+        /// </summary>
+        AdminUpdateUser = 44,
+        /// <summary>
+        /// Админ -> Сервер: удалить пользователя
+        /// </summary>
+        AdminDeleteUser = 45,
+        /// <summary>
+        /// Админ -> Сервер: заблокировать/разблокировать пользователя
+        /// </summary>
+        AdminBlockUser = 46,
+        /// <summary>
+        /// Сервер -> Админ: результат операции
+        /// </summary>
+        AdminActionResponse = 47,
 
         #endregion
 
