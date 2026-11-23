@@ -1,8 +1,9 @@
 ﻿<Window x:Class="RGRTU.Messenger.Client.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:RGRTU.Messenger.Client.Controls"
         Title="Мессенджер РГРТУ" Height="720" Width="1200"
-        MinWidth="820" MinHeight="520"
+        MinWidth="1000" MinHeight="520"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource AppBackgroundBrush}">
 
@@ -203,7 +204,7 @@
                     <Grid Margin="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="1*" MinWidth="260" />
-                            <ColumnDefinition Width="4*" MinWidth="360" />
+                            <ColumnDefinition Width="4*" MinWidth="620" />
                         </Grid.ColumnDefinitions>
 
                         <!-- ДВЕ ОДИНАКОВЫЕ ТАБЛИЦЫ: КЛИЕНТ И СЕРВЕР -->
@@ -276,57 +277,44 @@
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
 
-                                <!-- Верхний ряд: метаданные файла + фильтр событий -->
+                                <!-- Верхний ряд: информация о файле + фильтр + легенда -->
                                 <Grid Grid.Row="0" Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="270" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- Метаданные выбранного файла (компактно, в 3 строки) -->
-                                    <Border Grid.Column="0" Background="#F8FBFF" CornerRadius="8" Padding="10"
+                                    <!-- Информация о журнале событий -->
+                                    <Border Grid.Column="0" Background="#F8FBFF" CornerRadius="8" Padding="12"
                                             BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                            </Grid.RowDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Информация о журнале событий" FontSize="14" FontWeight="Bold"
+                                                       Margin="0,0,0,8" Foreground="{StaticResource TextBrushBlue}"/>
 
-                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Имя:" FontWeight="SemiBold"
-                                                       Margin="0,0,8,3" Foreground="{StaticResource TextBrushBlue}"/>
-                                            <TextBlock x:Name="LogNameTextBlock" Grid.Row="0" Grid.Column="1"
-                                                       Margin="0,0,10,3" TextTrimming="CharacterEllipsis"
+                                            <TextBlock x:Name="LogNameTextBlock" FontSize="13" FontWeight="SemiBold"
+                                                       Margin="0,0,0,6" TextTrimming="CharacterEllipsis"
                                                        Foreground="{StaticResource TextBrushBlue}"/>
-                                            <TextBlock Grid.Row="0" Grid.Column="2" Text="Дата:" FontWeight="SemiBold"
-                                                       Margin="0,0,8,3" Foreground="{StaticResource TextBrushBlue}"/>
-                                            <TextBlock x:Name="LogDateTextBlock" Grid.Row="0" Grid.Column="3"
-                                                       Margin="0,0,0,3" Foreground="{StaticResource TextBrushBlue}"/>
 
-                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Размер:" FontWeight="SemiBold"
-                                                       Margin="0,0,8,3" Foreground="{StaticResource TextBrushBlue}"/>
-                                            <TextBlock x:Name="LogSizeTextBlock" Grid.Row="1" Grid.Column="1"
-                                                       Margin="0,0,10,3" Foreground="{StaticResource TextBrushBlue}"/>
-                                            <TextBlock Grid.Row="1" Grid.Column="2" Text="Всего:" FontWeight="SemiBold"
-                                                       Margin="0,0,8,3" Foreground="{StaticResource TextBrushBlue}"/>
-                                            <TextBlock x:Name="LogCountTextBlock" Grid.Row="1" Grid.Column="3"
-                                                       Margin="0,0,0,3" Foreground="{StaticResource TextBrushBlue}"/>
+                                            <TextBlock x:Name="LogCountTextBlock" FontSize="13"
+                                                       Margin="0,0,0,6" Foreground="{StaticResource TextBrushBlue}"/>
 
-                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Типы:" FontWeight="SemiBold"
-                                                       Margin="0,0,8,0" Foreground="{StaticResource TextBrushBlue}"/>
-                                            <TextBlock x:Name="LogTypesTextBlock" Grid.Row="2" Grid.Column="1"
-                                                       Grid.ColumnSpan="3" TextTrimming="CharacterEllipsis"
-                                                       Foreground="{StaticResource TextBrushBlue}"/>
-                                        </Grid>
+                                            <ItemsControl x:Name="LogTypesItemsControl">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                            <Ellipse Width="9" Height="10" Fill="{Binding Color}"
+                                                                     Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                            <TextBlock Text="{Binding StatDisplay}" FontSize="12"
+                                                                       Foreground="{StaticResource TextBrushBlue}"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
                                     </Border>
 
-                                    <!-- Фильтр событий: оформление как раньше, но время выбирается списками -->
+                                    <!-- Фильтр событий: время через numeric up/down -->
                                     <Border Grid.Column="1" Background="#F8FBFF" CornerRadius="8" Padding="12" Margin="8,0,0,0"
                                             BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
                                         <StackPanel>
@@ -335,31 +323,84 @@
 
                                             <TextBlock Text="Время с" FontSize="12" Margin="0,0,0,3"
                                                        Foreground="#64748B"/>
-                                            <ComboBox x:Name="FilterTimeFromComboBox" Height="32"
-                                                      Style="{StaticResource AdminComboBoxStyle}"
-                                                      SelectionChanged="FilterComboBox_SelectionChanged"/>
+                                            <Grid Margin="0,0,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <controls:NumericUpDown x:Name="FilterHourFromNumeric"
+                                                                        Grid.Column="0" Height="28" Minimum="0" Maximum="23"
+                                                                        Value="0"/>
+                                                <TextBlock Grid.Column="1" Text=":" FontSize="15" FontWeight="Bold"
+                                                           Margin="6,0" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource TextBrushBlue}"/>
+                                                <controls:NumericUpDown x:Name="FilterMinuteFromNumeric"
+                                                                        Grid.Column="2" Height="28" Minimum="0" Maximum="59"
+                                                                        Value="0"/>
+                                            </Grid>
 
                                             <TextBlock Text="Время по" FontSize="12" Margin="0,8,0,3"
                                                        Foreground="#64748B"/>
-                                            <ComboBox x:Name="FilterTimeToComboBox" Height="32"
-                                                      Style="{StaticResource AdminComboBoxStyle}"
-                                                      SelectionChanged="FilterComboBox_SelectionChanged"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <controls:NumericUpDown x:Name="FilterHourToNumeric"
+                                                                        Grid.Column="0" Height="28" Minimum="0" Maximum="23"
+                                                                        Value="23"/>
+                                                <TextBlock Grid.Column="1" Text=":" FontSize="15" FontWeight="Bold"
+                                                           Margin="6,0" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource TextBrushBlue}"/>
+                                                <controls:NumericUpDown x:Name="FilterMinuteToNumeric"
+                                                                        Grid.Column="2" Height="28" Minimum="0" Maximum="59"
+                                                                        Value="59"/>
+                                            </Grid>
 
                                             <TextBlock Text="Тип события" FontSize="12" Margin="0,8,0,3"
                                                        Foreground="#64748B"/>
-                                            <ComboBox x:Name="FilterLevelComboBox" Height="32"
-                                                      Style="{StaticResource AdminComboBoxStyle}"
-                                                      SelectionChanged="FilterComboBox_SelectionChanged"/>
+                                            <ComboBox x:Name="FilterLevelComboBox" Height="28" FontSize="12"
+                                                      Style="{StaticResource AdminComboBoxStyle}"/>
 
-                                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                                <Button x:Name="ApplyFilterButton" Content="Применить" Height="32"
-                                                        Padding="14,0" Margin="0,0,6,0"
+                                            <Grid Margin="0,12,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Button x:Name="ApplyFilterButton" Grid.Column="0" Content="Применить"
+                                                        Height="28" FontSize="12" Margin="0,0,3,0"
                                                         Style="{StaticResource PrimaryButtonStyle}"
                                                         Click="ApplyFilterButton_Click"/>
-                                                <Button x:Name="ResetFilterButton" Content="Сбросить" Height="32"
-                                                        Padding="14,0" Style="{StaticResource LightButtonStyle}"
+                                                <Button x:Name="ResetFilterButton" Grid.Column="1" Content="Сбросить"
+                                                        Height="28" FontSize="12" Margin="3,0,0,0"
+                                                        Style="{StaticResource LightButtonStyle}"
                                                         Click="ResetFilterButton_Click"/>
-                                            </StackPanel>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Легенда событий -->
+                                    <Border Grid.Column="2" Background="#F8FBFF" CornerRadius="8" Padding="12" Margin="8,0,0,0"
+                                            BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
+                                        <StackPanel>
+                                            <TextBlock Text="Легенда событий" FontSize="14" FontWeight="Bold"
+                                                       Margin="0,0,0,10" Foreground="{StaticResource TextBrushBlue}"/>
+
+                                            <ItemsControl x:Name="LogLegendItemsControl">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                                                            <Ellipse Width="9" Height="10" Fill="{Binding Color}"
+                                                                     Margin="0,0,7,0" VerticalAlignment="Center"/>
+                                                            <TextBlock Text="{Binding LegendDisplay}" FontSize="12"
+                                                                       TextWrapping="Wrap"
+                                                                       Foreground="{StaticResource TextBrushBlue}"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                         </StackPanel>
                                     </Border>
                                 </Grid>

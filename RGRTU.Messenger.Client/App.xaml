@@ -14,6 +14,13 @@
         <SolidColorBrush x:Key="DangerBrush" Color="#DC2626"/>
         <SolidColorBrush x:Key="DangerDarkBrush" Color="#B91C1C"/>
 
+        <!-- Цвета уровней событий журнала -->
+        <SolidColorBrush x:Key="InfoLevelBrush" Color="#3B82F6"/>
+        <SolidColorBrush x:Key="WarnLevelBrush" Color="#F59E0B"/>
+        <SolidColorBrush x:Key="ErrorLevelBrush" Color="#DC2626"/>
+        <SolidColorBrush x:Key="DebugLevelBrush" Color="#64748B"/>
+        <SolidColorBrush x:Key="FatalLevelBrush" Color="#7C3AED"/>
+
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontSize" Value="13"/>

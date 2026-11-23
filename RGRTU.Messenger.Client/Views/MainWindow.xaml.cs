@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -106,14 +105,20 @@ namespace RGRTU.Messenger.Client.Views
                 MainTabControl.SelectionChanged += MainTabControl_SelectionChanged;
 
                 _suppressLogFilterEvent = true;
-                var timeOptions = BuildTimeOptions();
-                FilterTimeFromComboBox.ItemsSource = timeOptions;
-                FilterTimeToComboBox.ItemsSource = timeOptions;
-                FilterTimeFromComboBox.SelectedItem = "00:00";
-                FilterTimeToComboBox.SelectedItem = "23:59";
+                FilterHourFromNumeric.Value = 0;
+                FilterMinuteFromNumeric.Value = 0;
+                FilterHourToNumeric.Value = 23;
+                FilterMinuteToNumeric.Value = 59;
+                FilterHourFromNumeric.ValueChanged += FilterNumeric_ValueChanged;
+                FilterMinuteFromNumeric.ValueChanged += FilterNumeric_ValueChanged;
+                FilterHourToNumeric.ValueChanged += FilterNumeric_ValueChanged;
+                FilterMinuteToNumeric.ValueChanged += FilterNumeric_ValueChanged;
                 FilterLevelComboBox.ItemsSource = new[] { "Все" };
                 FilterLevelComboBox.SelectedItem = "Все";
+                LogLegendItemsControl.ItemsSource = BuildLogLegend();
                 _suppressLogFilterEvent = false;
+
+                FilterLevelComboBox.SelectionChanged += FilterComboBox_SelectionChanged;
             }
             else
             {
@@ -305,6 +310,11 @@ namespace RGRTU.Messenger.Client.Views
                     if (!response.IsSuccess)
                         Log.Warning("Сервер вернул ошибку списка логов: {Error}", response.ErrorMessage);
                 }
+                catch (OperationCanceledException)
+                {
+                    // Пользователь ушёл с вкладки — outer catch обработает отмену без предупреждения.
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     Log.Warning(ex, "Не удалось получить список логов сервера");
@@ -447,10 +457,8 @@ namespace RGRTU.Messenger.Client.Views
                     _allLogEntries.Clear();
                     _logEntries.Clear();
                     LogNameTextBlock.Text = file.Name;
-                    LogDateTextBlock.Text = file.Date.ToString("dd.MM.yyyy HH:mm");
-                    LogSizeTextBlock.Text = file.SizeText;
-                    LogTypesTextBlock.Text = "Ошибка чтения файла";
-                    LogCountTextBlock.Text = string.Empty;
+                    LogTypesItemsControl.ItemsSource = Array.Empty<LogLevelInfoViewModel>();
+                    LogCountTextBlock.Text = "Всего событий: 0";
                 });
             }
             finally
@@ -465,8 +473,6 @@ namespace RGRTU.Messenger.Client.Views
             _allLogEntries = entries;
 
             LogNameTextBlock.Text = file.Name;
-            LogDateTextBlock.Text = file.Date.ToString("dd.MM.yyyy HH:mm");
-            LogSizeTextBlock.Text = file.SizeText;
 
             UpdateLogLevelFilter(entries);
             ApplyLogFilter();
@@ -496,21 +502,76 @@ namespace RGRTU.Messenger.Client.Views
         }
 
         /// <summary>
-        /// Варианты времени с шагом 5 минут — выбираются из списка, без ручного ввода.
+        /// Легенда уровней событий с цветовыми значками.
         /// </summary>
-        private static List<string> BuildTimeOptions()
+        private static List<LogLevelInfoViewModel> BuildLogLegend()
         {
-            var options = new List<string>();
-            for (int minutes = 0; minutes < 24 * 60; minutes += 5)
-                options.Add($"{minutes / 60:00}:{minutes % 60:00}");
+            return new List<LogLevelInfoViewModel>
+            {
+                new() { Code = "INF", Description = "информация", Color = GetLevelBrush("INF") },
+                new() { Code = "WRN", Description = "предупреждение (WARN)", Color = GetLevelBrush("WRN") },
+                new() { Code = "ERR", Description = "ошибка", Color = GetLevelBrush("ERR") },
+                new() { Code = "DBG", Description = "отладка", Color = GetLevelBrush("DBG") },
+                new() { Code = "FTL", Description = "критическая ошибка", Color = GetLevelBrush("FTL") }
+            };
+        }
 
-            if (options[^1] != "23:59")
-                options.Add("23:59");
+        /// <summary>
+        /// Приводит разные варианты написания уровня к одному коду.
+        /// </summary>
+        private static string NormalizeLevel(string level)
+        {
+            return level.Trim().ToUpperInvariant() switch
+            {
+                "INFO" => "INF",
+                "WARN" or "WARNING" => "WRN",
+                "ERROR" => "ERR",
+                "DEBUG" => "DBG",
+                "FATAL" or "CRITICAL" => "FTL",
+                var other => other
+            };
+        }
 
-            return options;
+        private static Brush GetLevelBrush(string level)
+        {
+            string resourceKey = NormalizeLevel(level) switch
+            {
+                "INF" => "InfoLevelBrush",
+                "WRN" => "WarnLevelBrush",
+                "ERR" => "ErrorLevelBrush",
+                "DBG" => "DebugLevelBrush",
+                "FTL" => "FatalLevelBrush",
+                _ => "AccentBrush"
+            };
+
+            return Application.Current?.TryFindResource(resourceKey) as Brush ?? Brushes.Gray;
+        }
+
+        /// <summary>
+        /// Статистика по всему файлу: «INF: 120», «WRN: 1» и т.д. с цветными точками.
+        /// </summary>
+        private static List<LogLevelInfoViewModel> BuildLogStats(IEnumerable<LogEntryViewModel> entries)
+        {
+            return entries
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Level))
+                .GroupBy(entry => NormalizeLevel(entry.Level))
+                .OrderByDescending(group => group.Count())
+                .Select(group => new LogLevelInfoViewModel
+                {
+                    Code = group.Key,
+                    Count = group.Count(),
+                    Color = GetLevelBrush(group.Key)
+                })
+                .ToList();
         }
 
         private void FilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_suppressLogFilterEvent)
+                ApplyLogFilter();
+        }
+
+        private void FilterNumeric_ValueChanged(object? sender, EventArgs e)
         {
             if (!_suppressLogFilterEvent)
                 ApplyLogFilter();
@@ -524,51 +585,40 @@ namespace RGRTU.Messenger.Client.Views
         private void ResetFilterButton_Click(object sender, RoutedEventArgs e)
         {
             _suppressLogFilterEvent = true;
-            FilterTimeFromComboBox.SelectedItem = "00:00";
-            FilterTimeToComboBox.SelectedItem = "23:59";
+            FilterHourFromNumeric.Value = 0;
+            FilterMinuteFromNumeric.Value = 0;
+            FilterHourToNumeric.Value = 23;
+            FilterMinuteToNumeric.Value = 59;
             FilterLevelComboBox.SelectedItem = "Все";
             _suppressLogFilterEvent = false;
 
             ApplyLogFilter();
         }
 
-        private static bool TryParseTime(string text, out TimeSpan time)
-        {
-            return TimeSpan.TryParseExact(
-                text,
-                @"hh\:mm",
-                CultureInfo.InvariantCulture,
-                TimeSpanStyles.None,
-                out time);
-        }
-
         private void ApplyLogFilter()
         {
-            bool hasFrom = TryParseTime(FilterTimeFromComboBox.SelectedItem as string ?? string.Empty, out TimeSpan from);
-            bool hasTo = TryParseTime(FilterTimeToComboBox.SelectedItem as string ?? string.Empty, out TimeSpan to);
-            bool wrapsMidnight = hasFrom && hasTo && from > to;
+            if (FilterHourFromNumeric == null || FilterMinuteFromNumeric == null ||
+                FilterHourToNumeric == null || FilterMinuteToNumeric == null ||
+                FilterLevelComboBox == null || LogEntriesDataGrid == null)
+                return;
+
+            var from = new TimeSpan(FilterHourFromNumeric.Value, FilterMinuteFromNumeric.Value, 0);
+            var to = new TimeSpan(FilterHourToNumeric.Value, FilterMinuteToNumeric.Value, 59);
+            bool wrapsMidnight = from > to;
+            bool isFullDay = from == TimeSpan.Zero && to == new TimeSpan(23, 59, 59);
             string level = FilterLevelComboBox.SelectedItem as string ?? "Все";
 
             var filtered = _allLogEntries
                 .Where(entry =>
                 {
-                    // Строки без распознанного времени показываем только когда фильтр по времени не задан.
+                    // Строки без распознанного времени (стек-трейсы) показываем только за весь день.
                     if (entry.Timestamp == default)
-                        return !hasFrom && !hasTo && (level == "Все" || entry.Level == level);
+                        return isFullDay && (level == "Все" || entry.Level == level);
 
                     TimeSpan time = entry.Timestamp.TimeOfDay;
-                    bool timeOk;
-
-                    if (wrapsMidnight)
-                        timeOk = time >= from || time <= to;
-                    else if (hasFrom && hasTo)
-                        timeOk = time >= from && time <= to;
-                    else if (hasFrom)
-                        timeOk = time >= from;
-                    else if (hasTo)
-                        timeOk = time <= to;
-                    else
-                        timeOk = true;
+                    bool timeOk = wrapsMidnight
+                        ? time >= from || time <= to
+                        : time >= from && time <= to;
 
                     return timeOk && (level == "Все" || entry.Level == level);
                 })
@@ -579,10 +629,10 @@ namespace RGRTU.Messenger.Client.Views
                 _logEntries.Add(entry);
 
             // Статистика типов — по всему файлу, счётчик — с учётом фильтра.
-            LogTypesTextBlock.Text = _logFileService.BuildTypeStats(_allLogEntries);
+            LogTypesItemsControl.ItemsSource = BuildLogStats(_allLogEntries);
             LogCountTextBlock.Text = filtered.Count == _allLogEntries.Count
-                ? _allLogEntries.Count.ToString()
-                : $"{filtered.Count} из {_allLogEntries.Count}";
+                ? $"Всего событий: {_allLogEntries.Count}"
+                : $"Всего событий: {filtered.Count} из {_allLogEntries.Count}";
         }
 
         private void ClearLogDetails()
@@ -590,9 +640,7 @@ namespace RGRTU.Messenger.Client.Views
             _allLogEntries.Clear();
             _logEntries.Clear();
             LogNameTextBlock.Text = string.Empty;
-            LogDateTextBlock.Text = string.Empty;
-            LogSizeTextBlock.Text = string.Empty;
-            LogTypesTextBlock.Text = string.Empty;
+            LogTypesItemsControl.ItemsSource = Array.Empty<LogLevelInfoViewModel>();
             LogCountTextBlock.Text = string.Empty;
         }
 
