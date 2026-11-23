@@ -237,6 +237,8 @@
             <Setter Property="SelectionMode" Value="Single"/>
             <!-- Скрываем левый столбец заголовков строк, чтобы таблица начиналась от самого края -->
             <Setter Property="HeadersVisibility" Value="Column"/>
+            <!-- Убираем пустую строку для добавления новых записей -->
+            <Setter Property="CanUserAddRows" Value="False"/>
             <Setter Property="Background" Value="White"/>
             <Setter Property="RowBackground" Value="White"/>
             <Setter Property="AlternatingRowBackground" Value="#F8FBFF"/>
