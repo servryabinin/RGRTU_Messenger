@@ -72,11 +72,16 @@ namespace RGRTU.Messenger.Server.Configuration
         public static string DefaultGuestName { get; private set; }
 
         /// <summary>
-        /// Устаревший идентификатор администратора: сейчас роль хранится в базе данных SQLite (п. 2.a).
-        /// Оставлен в конфигурации для обратной совместимости.
+        /// Логин администратора, который создаётся автоматически при первом запуске сервера.
         /// </summary>
-        /// <value>Строковое значение идентификатора (по умолчанию "admin").</value>
+        /// <value>Строковое значение логина (по умолчанию "admin").</value>
         public static string AdminLoginIdentifier { get; private set; }
+
+        /// <summary>
+        /// Пароль администратора, который создаётся автоматически при первом запуске сервера.
+        /// </summary>
+        /// <value>Строковое значение пароля (по умолчанию "admin123").</value>
+        public static string DefaultAdminPassword { get; private set; }
 
         /// <summary>
         /// Минимально допустимая длина строки логина при валидации на стороне сервера.
@@ -123,6 +128,7 @@ namespace RGRTU.Messenger.Server.Configuration
 
             DefaultGuestName = root.GetProperty("BusinessRules").GetProperty("DefaultGuestName").GetString();
             AdminLoginIdentifier = root.GetProperty("BusinessRules").GetProperty("AdminLoginIdentifier").GetString();
+            DefaultAdminPassword = root.GetProperty("BusinessRules").GetProperty("DefaultAdminPassword").GetString();
             MinLoginLength = root.GetProperty("BusinessRules").GetProperty("MinLoginLength").GetInt32();
         }
     }

@@ -182,6 +182,20 @@ namespace RGRTU.Messenger.Server.Core
                             PacketSerializer.DeserializePayload<AdminBlockUserRequestDto>(json))));
                     break;
 
+                case MessageType.AdminGetLogFiles:
+                    await SendPacketAsync(PacketSerializer.Serialize(
+                        MessageType.AdminLogFilesResponse,
+                        await _server.Admin.GetLogFilesAsync(this)));
+                    break;
+
+                case MessageType.AdminGetLogContent:
+                    await SendPacketAsync(PacketSerializer.Serialize(
+                        MessageType.AdminLogContentResponse,
+                        await _server.Admin.GetLogContentAsync(
+                            this,
+                            PacketSerializer.DeserializePayload<AdminLogContentRequestDto>(json))));
+                    break;
+
                 case MessageType.Ping:
                     await SendPacketAsync(PacketSerializer.Serialize(MessageType.Pong, new { }));
                     break;

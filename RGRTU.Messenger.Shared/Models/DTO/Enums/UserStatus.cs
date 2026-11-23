@@ -25,7 +25,7 @@ namespace RGRTU.Messenger.Shared.Models.DTO.Enums
         /// <summary>
         /// Пользователь подключен, но не активен (отошел)
         /// </summary>
-        [Description("Отошёл")]
+        [Description("Отошел")]
         Away = 2,
 
         /// <summary>

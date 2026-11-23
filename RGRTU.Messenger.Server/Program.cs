@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Serilog;
-using RGRTU.Messenger.Server.Admin;
 using RGRTU.Messenger.Server.Configuration;
 using RGRTU.Messenger.Server.Core;
 using RGRTU.Messenger.Server.Data;
@@ -29,14 +28,25 @@ try
     var userRepository = new UserRepository(ServerConfig.DatabasePath);
     await userRepository.InitializeAsync();
 
-    // 4. Запускаем сетевой сервер и консоль администратора параллельно
+    // 4. При первом запуске создаём администратора автоматически, без консоли.
+    if (await userRepository.CountAdminsAsync() == 0)
+    {
+        string adminLogin = ServerConfig.AdminLoginIdentifier;
+        string adminPassword = ServerConfig.DefaultAdminPassword;
+        string clientHash = PasswordHasher.Sha256Hex(adminPassword);
+        var (hash, salt) = PasswordHasher.CreateFromClientHash(clientHash);
+
+        int adminId = await userRepository.CreateAsync(
+            adminLogin, hash, salt, "Администратор", UserRole.Admin);
+
+        Log.Warning(
+            "Создан администратор по умолчанию: {Login} / {Password} (Id={Id}). Измените пароль через GUI.",
+            adminLogin, adminPassword, adminId);
+    }
+
+    // 5. Запускаем сетевой сервер. Больше нет консоли администратора — только GUI-клиент.
     var server = new MessengerServer(ServerConfig.Port, userRepository);
-    _ = server.StartAsync();
-
-    var adminConsole = new AdminConsole(userRepository, server);
-    await adminConsole.RunAsync();
-
-    Log.Information("Консоль администратора закрыта, сервер останавливается");
+    await server.StartAsync();
 }
 catch (Exception ex)
 {

@@ -67,6 +67,16 @@ namespace RGRTU.Messenger.Client.Network
         public event Action<AdminActionResponseDto> OnAdminActionCompleted;
 
         /// <summary>
+        /// Событие получения списка логов с сервера.
+        /// </summary>
+        public event Action<AdminLogFilesResponseDto> OnAdminLogFilesReceived;
+
+        /// <summary>
+        /// Событие получения содержимого файла лога с сервера.
+        /// </summary>
+        public event Action<AdminLogContentResponseDto> OnAdminLogContentReceived;
+
+        /// <summary>
         /// Семафор, гарантирующий, что запись в сетевой поток не будет перемешана разными потоками UI.
         /// </summary>
         private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -187,6 +197,16 @@ namespace RGRTU.Messenger.Client.Network
                             var actionResult = PacketSerializer.DeserializePayload<AdminActionResponseDto>(payloadJson);
                             OnAdminActionCompleted?.Invoke(actionResult);
                             break;
+
+                        case MessageType.AdminLogFilesResponse:
+                            var logFiles = PacketSerializer.DeserializePayload<AdminLogFilesResponseDto>(payloadJson);
+                            OnAdminLogFilesReceived?.Invoke(logFiles);
+                            break;
+
+                        case MessageType.AdminLogContentResponse:
+                            var logContent = PacketSerializer.DeserializePayload<AdminLogContentResponseDto>(payloadJson);
+                            OnAdminLogContentReceived?.Invoke(logContent);
+                            break;
                     }
                 }
             }
@@ -221,6 +241,61 @@ namespace RGRTU.Messenger.Client.Network
         public Task RequestAdminUsersAsync()
         {
             return SendPacketAsync(MessageType.AdminGetUsers, new { });
+        }
+
+        /// <summary>
+        /// Запрашивает список файлов журнала на сервере (работает и с удалённым сервером в сети).
+        /// </summary>
+        public async Task<AdminLogFilesResponseDto> GetAdminLogFilesAsync()
+        {
+            var completion = new TaskCompletionSource<AdminLogFilesResponseDto>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+            Action<AdminLogFilesResponseDto>? handler = null;
+            handler = response =>
+            {
+                OnAdminLogFilesReceived -= handler!;
+                completion.TrySetResult(response);
+            };
+
+            OnAdminLogFilesReceived += handler;
+            try
+            {
+                await SendPacketAsync(MessageType.AdminGetLogFiles, new { });
+                return await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                OnAdminLogFilesReceived -= handler;
+            }
+        }
+
+        /// <summary>
+        /// Запрашивает содержимое одного файла журнала сервера.
+        /// </summary>
+        public async Task<AdminLogContentResponseDto> GetAdminLogContentAsync(string fileName)
+        {
+            var completion = new TaskCompletionSource<AdminLogContentResponseDto>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+            Action<AdminLogContentResponseDto>? handler = null;
+            handler = response =>
+            {
+                OnAdminLogContentReceived -= handler!;
+                completion.TrySetResult(response);
+            };
+
+            OnAdminLogContentReceived += handler;
+            try
+            {
+                await SendPacketAsync(MessageType.AdminGetLogContent,
+                    new AdminLogContentRequestDto { FileName = fileName });
+                return await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                OnAdminLogContentReceived -= handler;
+            }
         }
 
         /// <summary>

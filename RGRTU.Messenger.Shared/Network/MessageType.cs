@@ -89,6 +89,22 @@ namespace RGRTU.Messenger.Shared.Network
         /// Сервер -> Админ: результат операции
         /// </summary>
         AdminActionResponse = 47,
+        /// <summary>
+        /// Админ -> Сервер: запрос списка файлов журнала сервера
+        /// </summary>
+        AdminGetLogFiles = 48,
+        /// <summary>
+        /// Сервер -> Админ: список файлов журнала сервера
+        /// </summary>
+        AdminLogFilesResponse = 49,
+        /// <summary>
+        /// Админ -> Сервер: запрос содержимого файла журнала сервера
+        /// </summary>
+        AdminGetLogContent = 50,
+        /// <summary>
+        /// Сервер -> Админ: содержимое файла журнала сервера
+        /// </summary>
+        AdminLogContentResponse = 51,
 
         #endregion
 

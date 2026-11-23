@@ -12,14 +12,13 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- ВЕРХНЯЯ ПАНЕЛЬ: текущий пользователь, статус и выход -->
+        <!-- ВЕРХНЯЯ ПАНЕЛЬ: текущий пользователь и выход -->
         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}" CornerRadius="10"
                 BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1"
                 Padding="12,7" Margin="0,0,0,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
@@ -34,10 +33,7 @@
                                Foreground="#64748B" HorizontalAlignment="Right"/>
                 </StackPanel>
 
-                <ComboBox x:Name="StatusComboBox" Grid.Column="2" Width="110" Height="32" Margin="0,0,10,0"
-                          ToolTip="Мой статус" Style="{StaticResource AdminComboBoxStyle}"/>
-
-                <Button x:Name="LogoutButton" Grid.Column="3" Content="Выйти" Height="32" Padding="16,0"
+                <Button x:Name="LogoutButton" Grid.Column="2" Content="Выйти" Height="32" Padding="16,0"
                         Style="{StaticResource LightButtonStyle}" Click="LogoutButton_Click"/>
             </Grid>
         </Border>
@@ -47,7 +43,10 @@
                 <DropShadowEffect Color="Black" Direction="270" ShadowDepth="3" Opacity="0.1" BlurRadius="10"/>
             </Border.Effect>
 
-            <TabControl x:Name="MainTabControl" BorderThickness="0" Background="Transparent">
+            <!-- Верхняя граница отделяет заголовки вкладок от их содержимого -->
+            <TabControl x:Name="MainTabControl" Background="Transparent"
+                        BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="0,1,0,0"
+                        Padding="0,10,0,0">
 
                 <!-- ВКЛАДКА ЧАТА -->
                 <TabItem x:Name="ChatTabItem" Header="Чат">
@@ -196,6 +195,200 @@
                         <TextBlock x:Name="AdminHintTextBlock" Grid.Row="2" Margin="0,8,0,0"
                                    Text="Выберите пользователя в таблице, чтобы редактировать или удалить его."
                                    FontSize="12" Foreground="#64748B" TextWrapping="Wrap"/>
+                    </Grid>
+                </TabItem>
+
+                <!-- ВКЛАДКА ЖУРНАЛА СОБЫТИЙ -->
+                <TabItem x:Name="LogsTabItem" Header="Журнал событий" Visibility="Collapsed">
+                    <Grid Margin="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*" MinWidth="260" />
+                            <ColumnDefinition Width="4*" MinWidth="360" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- ДВЕ ОДИНАКОВЫЕ ТАБЛИЦЫ: КЛИЕНТ И СЕРВЕР -->
+                        <Border Grid.Column="0" Background="White" CornerRadius="10" Padding="10"
+                                BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Клиентские логи -->
+                                <Grid Grid.Row="0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Text="Журнал событий клиента" FontSize="13" FontWeight="Bold"
+                                               Margin="0,0,0,6" Foreground="{StaticResource TextBrushBlue}"/>
+
+                                    <DataGrid x:Name="ClientLogFilesDataGrid" Grid.Row="1"
+                                              Style="{StaticResource AdminDataGridStyle}"
+                                              ColumnHeaderStyle="{StaticResource AdminDataGridColumnHeaderStyle}"
+                                              EnableRowVirtualization="True"
+                                              VirtualizingPanel.VirtualizationMode="Recycling"
+                                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Имя" Binding="{Binding Name}" Width="*" MinWidth="80"/>
+                                            <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM HH:mm}"
+                                                                Width="88" MinWidth="80"/>
+                                            <DataGridTextColumn Header="Размер" Binding="{Binding SizeText}" Width="58" MinWidth="52"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+
+                                <!-- Серверные логи -->
+                                <Grid Grid.Row="1" Margin="0,8,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Text="Журнал событий сервера" FontSize="13" FontWeight="Bold"
+                                               Margin="0,0,0,6" Foreground="{StaticResource TextBrushBlue}"/>
+
+                                    <DataGrid x:Name="ServerLogFilesDataGrid" Grid.Row="1"
+                                              Style="{StaticResource AdminDataGridStyle}"
+                                              ColumnHeaderStyle="{StaticResource AdminDataGridColumnHeaderStyle}"
+                                              EnableRowVirtualization="True"
+                                              VirtualizingPanel.VirtualizationMode="Recycling"
+                                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Имя" Binding="{Binding Name}" Width="*" MinWidth="80"/>
+                                            <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=dd.MM HH:mm}"
+                                                                Width="88" MinWidth="80"/>
+                                            <DataGridTextColumn Header="Размер" Binding="{Binding SizeText}" Width="58" MinWidth="52"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- МЕТАДАННЫЕ, ФИЛЬТР И СОБЫТИЯ -->
+                        <Border Grid.Column="1" Background="White" CornerRadius="10" Padding="10" Margin="8,0,0,0"
+                                BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Верхний ряд: метаданные файла + фильтр событий -->
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="270" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Метаданные выбранного файла (компактно, в 3 строки) -->
+                                    <Border Grid.Column="0" Background="#F8FBFF" CornerRadius="8" Padding="10"
+                                            BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Имя:" FontWeight="SemiBold"
+                                                       Margin="0,0,8,3" Foreground="{StaticResource TextBrushBlue}"/>
+                                            <TextBlock x:Name="LogNameTextBlock" Grid.Row="0" Grid.Column="1"
+                                                       Margin="0,0,10,3" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{StaticResource TextBrushBlue}"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="2" Text="Дата:" FontWeight="SemiBold"
+                                                       Margin="0,0,8,3" Foreground="{StaticResource TextBrushBlue}"/>
+                                            <TextBlock x:Name="LogDateTextBlock" Grid.Row="0" Grid.Column="3"
+                                                       Margin="0,0,0,3" Foreground="{StaticResource TextBrushBlue}"/>
+
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Размер:" FontWeight="SemiBold"
+                                                       Margin="0,0,8,3" Foreground="{StaticResource TextBrushBlue}"/>
+                                            <TextBlock x:Name="LogSizeTextBlock" Grid.Row="1" Grid.Column="1"
+                                                       Margin="0,0,10,3" Foreground="{StaticResource TextBrushBlue}"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="2" Text="Всего:" FontWeight="SemiBold"
+                                                       Margin="0,0,8,3" Foreground="{StaticResource TextBrushBlue}"/>
+                                            <TextBlock x:Name="LogCountTextBlock" Grid.Row="1" Grid.Column="3"
+                                                       Margin="0,0,0,3" Foreground="{StaticResource TextBrushBlue}"/>
+
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Типы:" FontWeight="SemiBold"
+                                                       Margin="0,0,8,0" Foreground="{StaticResource TextBrushBlue}"/>
+                                            <TextBlock x:Name="LogTypesTextBlock" Grid.Row="2" Grid.Column="1"
+                                                       Grid.ColumnSpan="3" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{StaticResource TextBrushBlue}"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Фильтр событий: оформление как раньше, но время выбирается списками -->
+                                    <Border Grid.Column="1" Background="#F8FBFF" CornerRadius="8" Padding="12" Margin="8,0,0,0"
+                                            BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
+                                        <StackPanel>
+                                            <TextBlock Text="Фильтр событий" FontSize="14" FontWeight="Bold"
+                                                       Margin="0,0,0,10" Foreground="{StaticResource TextBrushBlue}"/>
+
+                                            <TextBlock Text="Время с" FontSize="12" Margin="0,0,0,3"
+                                                       Foreground="#64748B"/>
+                                            <ComboBox x:Name="FilterTimeFromComboBox" Height="32"
+                                                      Style="{StaticResource AdminComboBoxStyle}"
+                                                      SelectionChanged="FilterComboBox_SelectionChanged"/>
+
+                                            <TextBlock Text="Время по" FontSize="12" Margin="0,8,0,3"
+                                                       Foreground="#64748B"/>
+                                            <ComboBox x:Name="FilterTimeToComboBox" Height="32"
+                                                      Style="{StaticResource AdminComboBoxStyle}"
+                                                      SelectionChanged="FilterComboBox_SelectionChanged"/>
+
+                                            <TextBlock Text="Тип события" FontSize="12" Margin="0,8,0,3"
+                                                       Foreground="#64748B"/>
+                                            <ComboBox x:Name="FilterLevelComboBox" Height="32"
+                                                      Style="{StaticResource AdminComboBoxStyle}"
+                                                      SelectionChanged="FilterComboBox_SelectionChanged"/>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                                <Button x:Name="ApplyFilterButton" Content="Применить" Height="32"
+                                                        Padding="14,0" Margin="0,0,6,0"
+                                                        Style="{StaticResource PrimaryButtonStyle}"
+                                                        Click="ApplyFilterButton_Click"/>
+                                                <Button x:Name="ResetFilterButton" Content="Сбросить" Height="32"
+                                                        Padding="14,0" Style="{StaticResource LightButtonStyle}"
+                                                        Click="ResetFilterButton_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <!-- События выбранного файла -->
+                                <DataGrid x:Name="LogEntriesDataGrid" Grid.Row="1"
+                                          Style="{StaticResource AdminDataGridStyle}"
+                                          ColumnHeaderStyle="{StaticResource AdminDataGridColumnHeaderStyle}"
+                                          EnableRowVirtualization="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          ScrollViewer.CanContentScroll="True"
+                                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Дата и время события" Binding="{Binding TimestampText}"
+                                                            Width="170" MinWidth="160"/>
+                                        <DataGridTextColumn Header="Тип" Binding="{Binding Level}" Width="70" MinWidth="65"/>
+                                        <DataGridTextColumn Header="Содержимое события" Binding="{Binding Message}" Width="*">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                                    <Setter Property="VerticalAlignment" Value="Top"/>
+                                                    <Setter Property="Padding" Value="4,2"/>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
                     </Grid>
                 </TabItem>
 

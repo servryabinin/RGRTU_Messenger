@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using RGRTU.Messenger.Server.Configuration;
@@ -244,6 +245,122 @@ namespace RGRTU.Messenger.Server.Core
             {
                 Log.Error(ex, "Ошибка блокировки пользователя администратором {Admin}", session.Username);
                 return Fail("Не удалось изменить состояние пользователя");
+            }
+        }
+
+        /// <summary>
+        /// Возвращает список файлов журнала самого сервера. Запрос приходит по тому же TCP-соединению,
+        /// поэтому работает и для сервера, поднятого на другом ПК в локальной сети.
+        /// </summary>
+        public async Task<AdminLogFilesResponseDto> GetLogFilesAsync(ClientSession session)
+        {
+            if (!IsAdmin(session))
+                return new AdminLogFilesResponseDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Недостаточно прав для просмотра журналов сервера"
+                };
+
+            try
+            {
+                string directory = ServerConfig.LogDirectory;
+                if (!Directory.Exists(directory))
+                    return new AdminLogFilesResponseDto
+                    {
+                        IsSuccess = true,
+                        Files = new List<AdminLogFileDto>()
+                    };
+
+                var files = await Task.Run(() => Directory.GetFiles(directory, "*.txt")
+                    .Select(path => new FileInfo(path))
+                    .OrderByDescending(file => file.LastWriteTime)
+                    .Select(file => new AdminLogFileDto
+                    {
+                        Name = file.Name,
+                        Date = file.LastWriteTime,
+                        SizeBytes = file.Length
+                    })
+                    .ToList());
+
+                return new AdminLogFilesResponseDto { IsSuccess = true, Files = files };
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Ошибка получения списка логов сервера администратором {Admin}", session.Username);
+                return new AdminLogFilesResponseDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Не удалось получить список логов сервера"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Читает содержимое одного файла журнала сервера.
+        /// </summary>
+        public async Task<AdminLogContentResponseDto> GetLogContentAsync(
+            ClientSession session,
+            AdminLogContentRequestDto request)
+        {
+            if (!IsAdmin(session))
+                return new AdminLogContentResponseDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Недостаточно прав для просмотра журналов сервера"
+                };
+
+            string fileName = request.FileName ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(fileName) ||
+                Path.GetFileName(fileName) != fileName ||
+                fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                return new AdminLogContentResponseDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Некорректное имя файла журнала"
+                };
+            }
+
+            try
+            {
+                string path = Path.Combine(ServerConfig.LogDirectory, fileName);
+                if (!File.Exists(path))
+                    return new AdminLogContentResponseDto
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = "Файл журнала не найден на сервере"
+                    };
+
+                string content = await Task.Run(() =>
+                {
+                    // Serilog продолжает писать в файл — разрешаем параллельное чтение.
+                    using var stream = new FileStream(
+                        path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    using var reader = new StreamReader(stream);
+                    return reader.ReadToEnd();
+                });
+
+                // Защита от превышения максимального размера сетевого пакета.
+                const int maxContentChars = 2_000_000;
+                if (content.Length > maxContentChars)
+                    content = "[Показаны только последние записи файла]\n" +
+                              content.Substring(content.Length - maxContentChars);
+
+                return new AdminLogContentResponseDto
+                {
+                    IsSuccess = true,
+                    FileName = fileName,
+                    Content = content
+                };
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Ошибка чтения лога сервера {File} администратором {Admin}", fileName, session.Username);
+                return new AdminLogContentResponseDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Не удалось прочитать лог сервера"
+                };
             }
         }
 

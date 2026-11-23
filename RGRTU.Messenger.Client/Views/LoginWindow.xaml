@@ -1,7 +1,7 @@
 ﻿<Window x:Class="RGRTU.Messenger.Client.Views.LoginWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Мессенджер РГРТУ - Вход" Height="443" Width="400"
+        Title="Мессенджер РГРТУ - Вход" Height="384" Width="400"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="#F3F4F6">
