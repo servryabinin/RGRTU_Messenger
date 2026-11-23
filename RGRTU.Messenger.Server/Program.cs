@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Serilog;
-using RGRTU.Messenger.Server.Core;
+using RGRTU.Messenger.Server.Admin;
 using RGRTU.Messenger.Server.Configuration;
+using RGRTU.Messenger.Server.Core;
+using RGRTU.Messenger.Server.Data;
 
 // 1. Загружаем конфигурацию из файла
 ServerConfig.Load();
@@ -20,11 +22,21 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     Log.Information("=== Запуск сервера Мессенджер РГРТУ ===");
-    Log.Information("Конфигурация загружена. Порт: {Port}", ServerConfig.Port);
+    Log.Information("Конфигурация загружена. Порт: {Port}, БД: {Database}",
+        ServerConfig.Port, ServerConfig.DatabasePath);
 
-    // 3. Инициализируем сервер с портом из настроек
-    var server = new MessengerServer(ServerConfig.Port);
-    await server.StartAsync();
+    // 3. Инициализируем хранилище пользователей SQLite (п. 2.a)
+    var userRepository = new UserRepository(ServerConfig.DatabasePath);
+    await userRepository.InitializeAsync();
+
+    // 4. Запускаем сетевой сервер и консоль администратора параллельно
+    var server = new MessengerServer(ServerConfig.Port, userRepository);
+    _ = server.StartAsync();
+
+    var adminConsole = new AdminConsole(userRepository, server);
+    await adminConsole.RunAsync();
+
+    Log.Information("Консоль администратора закрыта, сервер останавливается");
 }
 catch (Exception ex)
 {

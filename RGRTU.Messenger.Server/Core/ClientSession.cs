@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
-using RGRTU.Messenger.Server.Configuration;
+using RGRTU.Messenger.Server.Data;
 using RGRTU.Messenger.Shared.Models.DTO;
 using RGRTU.Messenger.Shared.Models.DTO.Enums;
 using RGRTU.Messenger.Shared.Network;
@@ -11,7 +12,7 @@ namespace RGRTU.Messenger.Server.Core
 {
     /// <summary>
     /// Представляет индивидуальную сессию подключенного клиента.
-    /// Отвечает за чтение данных из сетевого потока, маршрутизацию сообщений 
+    /// Отвечает за чтение данных из сетевого потока, маршрутизацию сообщений
     /// и управление состоянием конкретного пользователя (п. 2.c, 2.d).
     /// </summary>
     public class ClientSession
@@ -39,17 +40,27 @@ namespace RGRTU.Messenger.Server.Core
         /// <summary>
         /// Идентификатор пользователя в базе данных (0, если не авторизован).
         /// </summary>
-        public int UserId { get; set; } = 0;
+        public int UserId { get; private set; }
 
         /// <summary>
         /// Отображаемое имя пользователя.
         /// </summary>
-        public string Username { get; set; } = ServerConfig.DefaultGuestName;
+        public string Username { get; private set; }
+
+        /// <summary>
+        /// Роль авторизованного пользователя.
+        /// </summary>
+        public UserRole Role { get; private set; } = UserRole.User;
 
         /// <summary>
         /// Флаг, указывающий, прошел ли пользователь успешную авторизацию.
         /// </summary>
-        public bool IsAuthenticated { get; set; } = false;
+        public bool IsAuthenticated { get; private set; }
+
+        /// <summary>
+        /// Признак того, что соединение закрыто по инициативе администратора.
+        /// </summary>
+        private int _closedByAdmin;
 
         /// <summary>
         /// Инициализирует новую сессию клиента.
@@ -60,6 +71,7 @@ namespace RGRTU.Messenger.Server.Core
             _tcpClient = tcpClient;
             _stream = tcpClient.GetStream();
             _server = server;
+            Username = "Guest";
         }
 
         /// <summary>
@@ -81,14 +93,22 @@ namespace RGRTU.Messenger.Server.Core
             {
                 Log.Information("Клиент {Id} корректно закрыл соединение", Id);
             }
+            catch (System.IO.IOException)
+            {
+                Log.Information("Соединение с клиентом {Id} закрыто", Id);
+            }
             catch (Exception ex)
             {
                 Log.Warning(ex, "Ошибка при обработке сообщений от клиента {Id}", Id);
             }
             finally
             {
-                await _server.BroadcastStatusAsync(this.UserId, this.Username, UserStatus.Offline);
-                _server.RemoveClient(this.Id);
+                if (IsAuthenticated)
+                {
+                    await _server.BroadcastStatusAsync(UserId, Username, UserStatus.Offline);
+                }
+
+                _server.RemoveClient(Id);
                 _tcpClient.Close();
             }
         }
@@ -105,17 +125,11 @@ namespace RGRTU.Messenger.Server.Core
                     break;
 
                 case MessageType.SendTextMessage:
-                    if (!IsAuthenticated)
-                    {
-                        Log.Warning("Попытка отправки сообщения неавторизованным клиентом {Id}", Id);
-                        return;
-                    }
+                    await HandleChatMessageAsync(json);
+                    break;
 
-                    var msg = PacketSerializer.DeserializePayload<ChatMessageDto>(json);
-                    Log.Information("Чат: {Sender} пишет: {Text}", msg.SenderName, msg.Text);
-
-                    var broadcastPacket = PacketSerializer.Serialize(MessageType.BroadcastMessage, msg);
-                    await _server.BroadcastMessageAsync(broadcastPacket);
+                case MessageType.KickUser:
+                    await HandleKickAsync(json);
                     break;
 
                 case MessageType.Ping:
@@ -129,40 +143,150 @@ namespace RGRTU.Messenger.Server.Core
         }
 
         /// <summary>
+        /// Обрабатывает текстовое сообщение, подменяя данные отправителя серверными.
+        /// </summary>
+        private async Task HandleChatMessageAsync(string json)
+        {
+            if (!IsAuthenticated)
+            {
+                Log.Warning("Попытка отправки сообщения неавторизованным клиентом {Id}", Id);
+                return;
+            }
+
+            var msg = PacketSerializer.DeserializePayload<ChatMessageDto>(json);
+            msg.SenderId = UserId;
+            msg.SenderName = Username;
+            msg.Timestamp = DateTime.Now;
+
+            if (string.IsNullOrWhiteSpace(msg.Text))
+                return;
+
+            Log.Information("Чат: {Sender} пишет: {Text}", msg.SenderName, msg.Text);
+
+            var broadcastPacket = PacketSerializer.Serialize(MessageType.BroadcastMessage, msg);
+            await _server.BroadcastMessageAsync(broadcastPacket);
+        }
+
+        /// <summary>
+        /// Обрабатывает запрос администратора на отключение пользователя.
+        /// </summary>
+        private async Task HandleKickAsync(string json)
+        {
+            if (!IsAuthenticated || Role != UserRole.Admin)
+            {
+                Log.Warning("Попытка kick без прав администратора: ClientID={Id}", Id);
+                return;
+            }
+
+            var request = PacketSerializer.DeserializePayload<AdminKickRequestDto>(json);
+            int disconnected = await _server.DisconnectUserAsync(
+                request.UserId,
+                string.IsNullOrWhiteSpace(request.Reason) ? "Отключён администратором" : request.Reason);
+
+            Log.Information("Администратор {Admin} отключил пользователя Id={Target}. Сессий: {Count}",
+                Username, request.UserId, disconnected);
+        }
+
+        /// <summary>
         /// Обрабатывает запрос на авторизацию пользователя.
         /// </summary>
         private async Task HandleAuthAsync(string json)
         {
-            var authReq = PacketSerializer.DeserializePayload<AuthRequestDto>(json);
+            AuthResponseDto response;
 
-            bool isSuccess = authReq.Login.Length >= ServerConfig.MinLoginLength;
-            bool isAdmin = authReq.Login.Equals(ServerConfig.AdminLoginIdentifier, StringComparison.OrdinalIgnoreCase);
-
-            var response = new AuthResponseDto
+            try
             {
-                IsSuccess = isSuccess,
-                UserId = isSuccess ? Id : 0,
-                Username = authReq.Login,
-                IsAdmin = isAdmin,
-                ErrorMessage = isSuccess ? string.Empty : "Неверный логин или пароль"
-            };
+                var authReq = PacketSerializer.DeserializePayload<AuthRequestDto>(json);
+                string login = authReq.Login?.Trim() ?? string.Empty;
+                string passwordHash = authReq.PasswordHash ?? string.Empty;
 
-            if (isSuccess)
-            {
-                this.IsAuthenticated = true;
-                this.UserId = Id;
-                this.Username = authReq.Login;
-                Log.Information("Успешная авторизация: {Login} (Admin: {IsAdmin})", authReq.Login, isAdmin);
+                var user = await _server.Users.GetByLoginAsync(login);
 
-                await _server.BroadcastStatusAsync(this.UserId, this.Username, UserStatus.Online);
+                string? error = null;
+                if (user is null)
+                {
+                    error = "Неверный логин или пароль";
+                }
+                else if (user.IsBlocked)
+                {
+                    error = string.IsNullOrWhiteSpace(user.BlockReason)
+                        ? "Пользователь заблокирован администратором"
+                        : $"Пользователь заблокирован. Причина: {user.BlockReason}";
+                }
+                else if (!PasswordHasher.VerifyClientHash(passwordHash, user.PasswordHash, user.Salt))
+                {
+                    error = "Неверный логин или пароль";
+                }
+
+                if (error is not null)
+                {
+                    response = new AuthResponseDto
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = error
+                    };
+
+                    Log.Warning("Ошибка авторизации: {Login} (ClientID: {Id}) - {Error}", login, Id, error);
+                }
+                else
+                {
+                    IsAuthenticated = true;
+                    UserId = user!.Id;
+                    Username = user.DisplayName;
+                    Role = user.Role;
+
+                    await _server.Users.UpdateLastLoginAsync(user.Id);
+
+                    response = new AuthResponseDto
+                    {
+                        IsSuccess = true,
+                        UserId = user.Id,
+                        Username = user.DisplayName,
+                        IsAdmin = user.Role == UserRole.Admin,
+                        ErrorMessage = string.Empty
+                    };
+
+                    Log.Information("Успешная авторизация: {Login} (UserId={UserId}, Admin={IsAdmin})",
+                        user.Login, user.Id, response.IsAdmin);
+
+                    await _server.BroadcastStatusAsync(user.Id, user.DisplayName, UserStatus.Online);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                Log.Warning("Ошибка авторизации: {Login} (ClientID: {Id})", authReq.Login, Id);
+                Log.Warning(ex, "Некорректный запрос авторизации от ClientID={Id}", Id);
+                response = new AuthResponseDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Некорректный запрос авторизации"
+                };
             }
 
-            var responsePacket = PacketSerializer.Serialize(MessageType.AuthResponse, response);
-            await SendPacketAsync(responsePacket);
+            await SendPacketAsync(PacketSerializer.Serialize(MessageType.AuthResponse, response));
+        }
+
+        /// <summary>
+        /// Закрывает соединение по инициативе администратора, сообщая причину клиенту.
+        /// </summary>
+        public async Task CloseAsync(string reason)
+        {
+            if (Interlocked.Exchange(ref _closedByAdmin, 1) == 1)
+                return;
+
+            try
+            {
+                var error = new ErrorDto { Message = reason };
+                await SendPacketAsync(PacketSerializer.Serialize(MessageType.Error, error));
+                await _stream.FlushAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Не удалось отправить причину отключения клиенту {Id}", Id);
+            }
+            finally
+            {
+                _tcpClient.Close();
+            }
         }
 
         /// <summary>

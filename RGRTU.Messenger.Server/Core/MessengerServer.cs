@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
-using RGRTU.Messenger.Server.Configuration;
+using RGRTU.Messenger.Server.Data;
 using RGRTU.Messenger.Shared.Models.DTO;
 using RGRTU.Messenger.Shared.Models.DTO.Enums;
 using RGRTU.Messenger.Shared.Network;
@@ -12,7 +14,7 @@ using Serilog;
 namespace RGRTU.Messenger.Server.Core
 {
     /// <summary>
-    /// Основной класс сервера, отвечающий за прослушивание сетевого порта 
+    /// Основной класс сервера, отвечающий за прослушивание сетевого порта
     /// и управление жизненным циклом подключений клиентов (п. 1.b, 1.c).
     /// </summary>
     public class MessengerServer
@@ -38,13 +40,20 @@ namespace RGRTU.Messenger.Server.Core
         private int _nextClientId = 1;
 
         /// <summary>
+        /// Хранилище пользователей SQLite (п. 2.a, 2.d).
+        /// </summary>
+        public UserRepository Users { get; }
+
+        /// <summary>
         /// Инициализирует новый экземпляр сервера.
         /// </summary>
         /// <param name="port">Порт для прослушивания входящих подключений.</param>
-        public MessengerServer(int port)
+        /// <param name="users">Хранилище пользователей.</param>
+        public MessengerServer(int port, UserRepository users)
         {
             _port = port;
             _listener = new TcpListener(IPAddress.Any, _port);
+            Users = users;
         }
 
         /// <summary>
@@ -68,8 +77,6 @@ namespace RGRTU.Messenger.Server.Core
                     var session = new ClientSession(clientId, tcpClient, this);
                     _activeClients.TryAdd(clientId, session);
 
-                    await BroadcastStatusAsync(clientId, ServerConfig.DefaultGuestName, UserStatus.Online);
-
                     _ = Task.Run(() => session.HandleClientAsync());
                 }
                 catch (SocketException ex)
@@ -84,7 +91,7 @@ namespace RGRTU.Messenger.Server.Core
         /// </summary>
         public async Task BroadcastMessageAsync(byte[] packetData, int excludeClientId = 0)
         {
-            foreach (var client in _activeClients.Values)
+            foreach (var client in _activeClients.Values.ToArray())
             {
                 if (client.Id != excludeClientId)
                 {
@@ -106,6 +113,48 @@ namespace RGRTU.Messenger.Server.Core
             };
             var packet = PacketSerializer.Serialize(MessageType.UserStatusUpdate, statusDto);
             await BroadcastMessageAsync(packet);
+        }
+
+        /// <summary>
+        /// Возвращает список авторизованных подключённых пользователей.
+        /// </summary>
+        public Task<IReadOnlyList<ClientSession>> GetAuthenticatedSessionsAsync()
+        {
+            IReadOnlyList<ClientSession> sessions = _activeClients.Values
+                .Where(s => s.IsAuthenticated)
+                .OrderBy(s => s.Id)
+                .ToList();
+
+            return Task.FromResult(sessions);
+        }
+
+        /// <summary>
+        /// Отключает все активные сессии указанного пользователя (блокировка/удаление).
+        /// </summary>
+        /// <returns>Количество отключённых сессий.</returns>
+        public async Task<int> DisconnectUserAsync(int userId, string reason)
+        {
+            var sessions = _activeClients.Values
+                .Where(s => s.IsAuthenticated && s.UserId == userId)
+                .ToArray();
+
+            foreach (var session in sessions)
+            {
+                await DisconnectSessionAsync(session.Id, reason);
+            }
+
+            return sessions.Length;
+        }
+
+        /// <summary>
+        /// Отключает конкретную сессию по инициативе администратора.
+        /// </summary>
+        public async Task DisconnectSessionAsync(int clientId, string reason)
+        {
+            if (_activeClients.TryGetValue(clientId, out var session))
+            {
+                await session.CloseAsync(reason);
+            }
         }
 
         /// <summary>

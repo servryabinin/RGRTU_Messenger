@@ -27,6 +27,12 @@ namespace RGRTU.Messenger.Server.Configuration
         /// <value>Максимальный размер в байтах (по умолчанию 10 000 000).</value>
         public static int MaxPayloadSizeBytes { get; private set; }
 
+        /// <summary>
+        /// Путь к файлу базы данных SQLite с учётными записями пользователей (п. 2.a).
+        /// </summary>
+        /// <value>Относительный или абсолютный путь (по умолчанию "data/messenger.db").</value>
+        public static string DatabasePath { get; private set; } = "data/messenger.db";
+
         #endregion
 
         #region Настройки логирования
@@ -66,7 +72,8 @@ namespace RGRTU.Messenger.Server.Configuration
         public static string DefaultGuestName { get; private set; }
 
         /// <summary>
-        /// Идентификатор логина, который наделяет пользователя правами администратора системы (п. 2.a).
+        /// Устаревший идентификатор администратора: сейчас роль хранится в базе данных SQLite (п. 2.a).
+        /// Оставлен в конфигурации для обратной совместимости.
         /// </summary>
         /// <value>Строковое значение идентификатора (по умолчанию "admin").</value>
         public static string AdminLoginIdentifier { get; private set; }
@@ -99,8 +106,15 @@ namespace RGRTU.Messenger.Server.Configuration
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
 
-            Port = root.GetProperty("Server").GetProperty("Port").GetInt32();
-            MaxPayloadSizeBytes = root.GetProperty("Server").GetProperty("MaxPayloadSizeBytes").GetInt32();
+            var serverSection = root.GetProperty("Server");
+
+            Port = serverSection.GetProperty("Port").GetInt32();
+            MaxPayloadSizeBytes = serverSection.GetProperty("MaxPayloadSizeBytes").GetInt32();
+
+            DatabasePath = serverSection.TryGetProperty("DatabasePath", out var databasePath) &&
+                           databasePath.ValueKind == System.Text.Json.JsonValueKind.String
+                ? databasePath.GetString() ?? "data/messenger.db"
+                : "data/messenger.db";
 
             LogDirectory = root.GetProperty("Logging").GetProperty("DirectoryPath").GetString();
             LogFileName = root.GetProperty("Logging").GetProperty("FileNameTemplate").GetString();
