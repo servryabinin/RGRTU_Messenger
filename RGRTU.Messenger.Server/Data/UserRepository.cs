@@ -60,9 +60,12 @@ CREATE TABLE IF NOT EXISTS Users
     IsBlocked    INTEGER NOT NULL DEFAULT 0,
     BlockReason  TEXT    NULL,
     CreatedAt    TEXT    NOT NULL,
-    LastLoginAt  TEXT    NULL
+    LastLoginAt  TEXT    NULL,
+    IsInChat     INTEGER NOT NULL DEFAULT 0
 );";
             await command.ExecuteNonQueryAsync();
+
+            await EnsureColumnExistsAsync(connection, "Users", "IsInChat", "INTEGER NOT NULL DEFAULT 0");
         }
 
         /// <summary>
@@ -249,6 +252,49 @@ WHERE Id = $id;";
         }
 
         /// <summary>
+        /// Возвращает незаблокированных пользователей для списка участников чата.
+        /// </summary>
+        public async Task<IReadOnlyList<UserRecord>> GetActiveForChatAsync()
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT * FROM Users
+WHERE IsBlocked = 0
+ORDER BY DisplayName COLLATE NOCASE, Login COLLATE NOCASE;";
+
+            var result = new List<UserRecord>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                result.Add(ReadUser(reader));
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Добавляет или исключает пользователя из общего чата.
+        /// </summary>
+        public async Task<bool> SetChatMemberAsync(int id, bool isInChat)
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync();
+
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE Users
+SET IsInChat = $inChat
+WHERE Id = $id AND IsBlocked = 0;";
+            command.Parameters.AddWithValue("$inChat", isInChat ? 1 : 0);
+            command.Parameters.AddWithValue("$id", id);
+
+            return await command.ExecuteNonQueryAsync() > 0;
+        }
+
+        /// <summary>
         /// Отмечает время последнего успешного входа пользователя.
         /// </summary>
         public async Task UpdateLastLoginAsync(int id)
@@ -277,6 +323,32 @@ WHERE Id = $id;";
             return new SqliteConnection(builder.ConnectionString);
         }
 
+        private static async Task EnsureColumnExistsAsync(SqliteConnection connection, string table, string column, string definition)
+        {
+            var check = connection.CreateCommand();
+            check.CommandText = $"PRAGMA table_info({table});";
+
+            bool exists = false;
+            await using (var reader = await check.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+            }
+
+            if (exists)
+                return;
+
+            var alter = connection.CreateCommand();
+            alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition};";
+            await alter.ExecuteNonQueryAsync();
+        }
+
         private static UserRecord ReadUser(SqliteDataReader reader)
         {
             return new UserRecord
@@ -294,7 +366,9 @@ WHERE Id = $id;";
                 CreatedAt = ParseDate(reader.GetString(reader.GetOrdinal("CreatedAt"))),
                 LastLoginAt = reader.IsDBNull(reader.GetOrdinal("LastLoginAt"))
                     ? null
-                    : ParseDate(reader.GetString(reader.GetOrdinal("LastLoginAt")))
+                    : ParseDate(reader.GetString(reader.GetOrdinal("LastLoginAt"))),
+                IsInChat = !reader.IsDBNull(reader.GetOrdinal("IsInChat")) &&
+                           reader.GetInt32(reader.GetOrdinal("IsInChat")) != 0
             };
         }
 

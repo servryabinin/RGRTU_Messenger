@@ -38,5 +38,10 @@ namespace RGRTU.Messenger.Shared.Models.DTO
         /// Является ли пользователь администратором
         /// </summary>
         public bool IsAdmin { get; set; } // Для требования 2.a
+
+        /// <summary>
+        /// Добавлен ли пользователь в общий чат администратором.
+        /// </summary>
+        public bool IsInChat { get; set; }
     }
 }

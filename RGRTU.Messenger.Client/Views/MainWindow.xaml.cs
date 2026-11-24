@@ -33,6 +33,11 @@ namespace RGRTU.Messenger.Client.Views
         /// </summary>
         private readonly ObservableCollection<AdminUserViewModel> _adminUsers = new();
 
+        private readonly ObservableCollection<ChatMessageViewModel> _chatMessages = new();
+        private readonly ObservableCollection<ChatMemberViewModel> _chatMembers = new();
+        private bool _isInChat;
+        private bool _isLoggingOut;
+
         /// <summary>
         /// Чтение файлов журнала событий.
         /// </summary>
@@ -84,10 +89,17 @@ namespace RGRTU.Messenger.Client.Views
             CurrentUserRoleTextBlock.Text = _isAdmin ? "Администратор" : "Пользователь";
 
             UsersDataGrid.ItemsSource = _adminUsers;
+            MessagesListBox.ItemsSource = _chatMessages;
+            UsersListBox.ItemsSource = _chatMembers;
+
+            _isInChat = _currentUser.IsInChat;
+            ApplyChatAccessState();
 
             _client.OnMessageReceived += Client_OnMessageReceived;
             _client.OnUserStatusChanged += Client_OnUserStatusChanged;
             _client.OnDisconnected += Client_OnDisconnected;
+            _client.OnErrorReceived += Client_OnErrorReceived;
+            _client.OnChatMembersReceived += Client_OnChatMembersReceived;
 
             if (_isAdmin)
             {
@@ -124,6 +136,10 @@ namespace RGRTU.Messenger.Client.Views
             {
                 AdminTabItem.Visibility = Visibility.Collapsed;
             }
+
+            // На случай, если список участников пришёл до открытия окна.
+            if (_client.LastChatMembersResponse != null)
+                Client_OnChatMembersReceived(_client.LastChatMembersResponse);
         }
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -137,8 +153,10 @@ namespace RGRTU.Messenger.Client.Views
         {
             Dispatcher.Invoke(() =>
             {
-                MessagesListBox.Items.Add($"[{message.Timestamp:HH:mm}] {message.SenderName}: {message.Text}");
-                MessagesListBox.ScrollIntoView(MessagesListBox.Items[MessagesListBox.Items.Count - 1]);
+                var vm = ChatMessageViewModel.Create(message.SenderId, message.SenderName, message.Text, message.Timestamp, _currentUser.UserId);
+                _chatMessages.Add(vm);
+                if (_chatMessages.Count > 0)
+                    MessagesListBox.ScrollIntoView(_chatMessages[^1]);
             });
         }
 
@@ -146,18 +164,76 @@ namespace RGRTU.Messenger.Client.Views
         {
             Dispatcher.Invoke(() =>
             {
-                UsersListBox.Items.Add($"{status.Username} [{status.Status.GetDescription()}]");
-
-                // Мгновенно обновляем строку в таблице администратора, не перезапрашивая список.
                 var row = _adminUsers.FirstOrDefault(u => u.Id == status.UserId);
                 if (row != null)
-                {
                     row.UpdateStatus(status.Status);
-                }
                 else if (_isAdmin)
-                {
-                    // Пользователь появился в системе после загрузки таблицы.
                     _ = RefreshUsersAsync(showStatus: false);
+            });
+        }
+
+        private void Client_OnChatMembersReceived(ChatMembersResponseDto response)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (!response.IsSuccess)
+                {
+                    Log.Warning("Ошибка получения участников чата: {Error}", response.ErrorMessage);
+                    return;
+                }
+
+                _isInChat = response.IsCurrentUserInChat || _isAdmin && response.Members.Any(m => m.Id == _currentUser.UserId && m.IsInChat);
+                // Для обычного пользователя сервер задаёт IsCurrentUserInChat; для админа он тоже в списке.
+                if (_isAdmin)
+                {
+                    var self = response.Members.FirstOrDefault(m => m.Id == _currentUser.UserId);
+                    _isInChat = self?.IsInChat ?? response.IsCurrentUserInChat;
+                }
+                else
+                {
+                    _isInChat = response.IsCurrentUserInChat;
+                }
+
+                _chatMembers.Clear();
+                foreach (var m in response.Members)
+                {
+                    _chatMembers.Add(new ChatMemberViewModel
+                    {
+                        Id = m.Id,
+                        DisplayName = m.DisplayName,
+                        IsInChat = m.IsInChat,
+                        CanManage = response.CanManage
+                    });
+                }
+
+                ApplyChatAccessState();
+            });
+        }
+
+        private void ApplyChatAccessState()
+        {
+            bool canChat = _isInChat || _isAdmin; // admin can be in chat or not; access by IsInChat
+            canChat = _isInChat;
+            MessagesListBox.Visibility = canChat ? Visibility.Visible : Visibility.Collapsed;
+            NotInChatTextBlock.Visibility = canChat ? Visibility.Collapsed : Visibility.Visible;
+            ChatInputGrid.Visibility = canChat ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void Client_OnErrorReceived(string errorMessage)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (_isLoggingOut || string.IsNullOrWhiteSpace(errorMessage))
+                    return;
+
+                // Блокировка/удаление аккаунта — принудительный выход на авторизацию.
+                if (errorMessage.Contains("заблокирован", StringComparison.OrdinalIgnoreCase) ||
+                    errorMessage.Contains("удалена", StringComparison.OrdinalIgnoreCase) ||
+                    errorMessage.Contains("удалён", StringComparison.OrdinalIgnoreCase))
+                {
+                    _isLoggingOut = true;
+                    MessageBox.Show(errorMessage, "Доступ ограничен", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ForceLogoutToLogin();
                 }
             });
         }
@@ -166,9 +242,11 @@ namespace RGRTU.Messenger.Client.Views
         {
             Dispatcher.Invoke(() =>
             {
+                if (_isLoggingOut) return;
+                _isLoggingOut = true;
                 Log.Warning("Соединение с сервером разорвано во время работы в чате");
                 MessageBox.Show("Соединение с сервером разорвано.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                Close();
+                ForceLogoutToLogin();
             });
         }
 
@@ -188,6 +266,8 @@ namespace RGRTU.Messenger.Client.Views
 
         private async Task SendMessageAsync()
         {
+            if (!_isInChat) return;
+
             string text = MessageInputTextBox.Text.Trim();
             if (string.IsNullOrEmpty(text)) return;
 
@@ -204,16 +284,38 @@ namespace RGRTU.Messenger.Client.Views
             MessageInputTextBox.Clear();
         }
 
+        private async void ChatMemberActionButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_isAdmin) return;
+            if (sender is not System.Windows.Controls.Button btn || btn.Tag is not int userId)
+                return;
+
+            var member = _chatMembers.FirstOrDefault(m => m.Id == userId);
+            if (member == null) return;
+
+            if (member.IsInChat)
+                await _client.RemoveChatMemberAsync(userId);
+            else
+                await _client.AddChatMemberAsync(userId);
+        }
+
         #endregion
 
         #region Профиль и выход
 
         private void LogoutButton_Click(object sender, RoutedEventArgs e)
         {
-            // Сначала отписываемся, чтобы закрытие соединения не вызвало MessageBox и Close.
+            ForceLogoutToLogin();
+        }
+
+        private void ForceLogoutToLogin()
+        {
+            _isLoggingOut = true;
             _client.OnMessageReceived -= Client_OnMessageReceived;
             _client.OnUserStatusChanged -= Client_OnUserStatusChanged;
             _client.OnDisconnected -= Client_OnDisconnected;
+            _client.OnErrorReceived -= Client_OnErrorReceived;
+            _client.OnChatMembersReceived -= Client_OnChatMembersReceived;
             Loaded -= MainWindow_Loaded;
             _logLoadCts?.Cancel();
 

@@ -107,6 +107,73 @@ namespace RGRTU.Messenger.Server.Core
         }
 
         /// <summary>
+        /// Отправляет сообщение только участникам общего чата.
+        /// </summary>
+        public async Task BroadcastMessageToChatMembersAsync(byte[] packetData)
+        {
+            foreach (var client in _activeClients.Values.Where(c => c.IsAuthenticated && c.IsInChat).ToArray())
+            {
+                await client.SendPacketAsync(packetData);
+            }
+        }
+
+        /// <summary>
+        /// Формирует список участников чата для конкретной сессии.
+        /// </summary>
+        public async Task<RGRTU.Messenger.Shared.Models.DTO.Admin.ChatMembersResponseDto> BuildChatMembersResponseAsync(ClientSession session)
+        {
+            var users = await Users.GetActiveForChatAsync();
+            bool isAdmin = session.Role == RGRTU.Messenger.Server.Data.UserRole.Admin;
+            var self = users.FirstOrDefault(u => u.Id == session.UserId);
+
+            var members = users
+                .Where(u => isAdmin || u.IsInChat)
+                .Select(u => new RGRTU.Messenger.Shared.Models.DTO.Admin.ChatMemberDto
+                {
+                    Id = u.Id,
+                    Login = u.Login,
+                    DisplayName = u.DisplayName,
+                    IsInChat = u.IsInChat
+                })
+                .ToList();
+
+            return new RGRTU.Messenger.Shared.Models.DTO.Admin.ChatMembersResponseDto
+            {
+                IsSuccess = true,
+                CanManage = isAdmin,
+                IsCurrentUserInChat = self?.IsInChat == true,
+                Members = members
+            };
+        }
+
+        /// <summary>
+        /// Отправляет актуальный список участников чата одной сессии.
+        /// </summary>
+        public async Task SendChatMembersToSessionAsync(ClientSession session)
+        {
+            if (!session.IsAuthenticated)
+                return;
+
+            var response = await BuildChatMembersResponseAsync(session);
+            var packet = PacketSerializer.Serialize(MessageType.ChatMembersResponse, response);
+            await session.SendPacketAsync(packet);
+        }
+
+        /// <summary>
+        /// Рассылает актуальный список участников всем авторизованным сессиям.
+        /// </summary>
+        public async Task BroadcastChatMembersAsync()
+        {
+            var sessions = _activeClients.Values.Where(s => s.IsAuthenticated).ToArray();
+            foreach (var session in sessions)
+            {
+                var user = await Users.GetByIdAsync(session.UserId);
+                session.SetChatMembership(user?.IsInChat == true && user.IsBlocked == false);
+                await SendChatMembersToSessionAsync(session);
+            }
+        }
+
+        /// <summary>
         /// Формирует и рассылает всем клиентам уведомление об изменении статуса пользователя (п. 2.d).
         /// </summary>
         public async Task BroadcastStatusAsync(int userId, string username, UserStatus status)

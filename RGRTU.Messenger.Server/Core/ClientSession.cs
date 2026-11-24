@@ -65,6 +65,11 @@ namespace RGRTU.Messenger.Server.Core
         public UserStatus Status { get; private set; } = UserStatus.Offline;
 
         /// <summary>
+        /// Добавлен ли пользователь в общий чат администратором.
+        /// </summary>
+        public bool IsInChat { get; private set; }
+
+        /// <summary>
         /// Признак того, что соединение закрыто по инициативе администратора.
         /// </summary>
         private int _closedByAdmin;
@@ -196,6 +201,14 @@ namespace RGRTU.Messenger.Server.Core
                             PacketSerializer.DeserializePayload<AdminLogContentRequestDto>(json))));
                     break;
 
+                case MessageType.AdminAddChatMember:
+                    await HandleChatMemberChangeAsync(json, true);
+                    break;
+
+                case MessageType.AdminRemoveChatMember:
+                    await HandleChatMemberChangeAsync(json, false);
+                    break;
+
                 case MessageType.Ping:
                     await SendPacketAsync(PacketSerializer.Serialize(MessageType.Pong, new { }));
                     break;
@@ -217,6 +230,12 @@ namespace RGRTU.Messenger.Server.Core
                 return;
             }
 
+            if (!IsInChat)
+            {
+                Log.Warning("Попытка отправки сообщения пользователем вне чата: {UserId}", UserId);
+                return;
+            }
+
             var msg = PacketSerializer.DeserializePayload<ChatMessageDto>(json);
             msg.SenderId = UserId;
             msg.SenderName = Username;
@@ -228,7 +247,7 @@ namespace RGRTU.Messenger.Server.Core
             Log.Information("Чат: {Sender} пишет: {Text}", msg.SenderName, msg.Text);
 
             var broadcastPacket = PacketSerializer.Serialize(MessageType.BroadcastMessage, msg);
-            await _server.BroadcastMessageAsync(broadcastPacket);
+            await _server.BroadcastMessageToChatMembersAsync(broadcastPacket);
         }
 
         /// <summary>
@@ -327,6 +346,7 @@ namespace RGRTU.Messenger.Server.Core
                     Username = user.DisplayName;
                     Role = user.Role;
                     Status = UserStatus.Online;
+                    IsInChat = user.IsInChat;
 
                     await _server.Users.UpdateLastLoginAsync(user.Id);
 
@@ -337,6 +357,7 @@ namespace RGRTU.Messenger.Server.Core
                         Login = user.Login,
                         Username = user.DisplayName,
                         IsAdmin = user.Role == UserRole.Admin,
+                        IsInChat = user.IsInChat,
                         ErrorMessage = string.Empty
                     };
 
@@ -357,6 +378,42 @@ namespace RGRTU.Messenger.Server.Core
             }
 
             await SendPacketAsync(PacketSerializer.Serialize(MessageType.AuthResponse, response));
+
+            if (response.IsSuccess)
+            {
+                await _server.SendChatMembersToSessionAsync(this);
+            }
+        }
+
+        /// <summary>
+        /// Администратор добавляет/исключает пользователя из чата.
+        /// </summary>
+        private async Task HandleChatMemberChangeAsync(string json, bool add)
+        {
+            if (!IsAuthenticated || Role != UserRole.Admin)
+            {
+                Log.Warning("Попытка изменения состава чата без прав администратора: ClientID={Id}", Id);
+                return;
+            }
+
+            var request = PacketSerializer.DeserializePayload<ChatMemberActionRequestDto>(json);
+            var user = await _server.Users.GetByIdAsync(request.UserId);
+            if (user is null || (user.IsBlocked && add))
+                return;
+
+            await _server.Users.SetChatMemberAsync(request.UserId, add);
+            await _server.BroadcastChatMembersAsync();
+
+            Log.Information("Администратор {Admin} {Action} пользователя {User} в чате",
+                Username, add ? "добавил" : "исключил", user.DisplayName);
+        }
+
+        /// <summary>
+        /// Обновляет флаг членства в чате для этой сессии.
+        /// </summary>
+        public void SetChatMembership(bool isInChat)
+        {
+            IsInChat = isInChat;
         }
 
         /// <summary>

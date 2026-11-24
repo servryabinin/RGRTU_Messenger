@@ -66,26 +66,54 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <ListBox x:Name="MessagesListBox" Grid.Row="0" BorderThickness="0" Background="Transparent"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,0,0,8">
-                                    <ListBox.ItemContainerStyle>
-                                        <Style TargetType="ListBoxItem">
-                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                            <Setter Property="Padding" Value="5"/>
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="ListBoxItem">
-                                                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter />
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </ListBox.ItemContainerStyle>
-                                </ListBox>
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <ListBox x:Name="MessagesListBox" BorderThickness="0" Background="Transparent"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Setter Property="Padding" Value="2"/>
+                                                <Setter Property="Focusable" Value="False"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListBoxItem">
+                                                            <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter />
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,2">
+                                                    <Border MaxWidth="520" Padding="10,8" CornerRadius="12"
+                                                            Background="{Binding BubbleBrush}"
+                                                            BorderBrush="{Binding BorderBrush}" BorderThickness="1"
+                                                            HorizontalAlignment="{Binding Alignment}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding SenderName}" FontSize="11" FontWeight="SemiBold"
+                                                                       Foreground="{Binding SenderBrush}" Margin="0,0,0,2"
+                                                                       Visibility="{Binding SenderVisibility}"/>
+                                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="13"
+                                                                       Foreground="#1E293B"/>
+                                                            <TextBlock Text="{Binding TimeText}" FontSize="10" Margin="0,4,0,0"
+                                                                       HorizontalAlignment="Right" Foreground="#64748B"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
 
-                                <Grid Grid.Row="1">
+                                    <TextBlock x:Name="NotInChatTextBlock" Text="Вы не добавлены в чат"
+                                               Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               FontSize="18" FontWeight="SemiBold" Foreground="#64748B"/>
+                                </Grid>
+
+                                <Grid x:Name="ChatInputGrid" Grid.Row="1">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
@@ -116,7 +144,40 @@
                                            Foreground="{StaticResource TextBrushBlue}"/>
 
                                 <ListBox x:Name="UsersListBox" Grid.Row="1" BorderThickness="0" Background="Transparent"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto" Foreground="{StaticResource TextBrushBlue}"/>
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="Padding" Value="2"/>
+                                            <Setter Property="Focusable" Value="False"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter />
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource TextBrushBlue}" TextTrimming="CharacterEllipsis"/>
+                                                <Button Grid.Column="1" Content="{Binding ActionText}" Padding="10,4" Margin="8,0,0,0"
+                                                        FontSize="12" Visibility="{Binding ActionVisibility}"
+                                                        Tag="{Binding Id}" Click="ChatMemberActionButton_Click"
+                                                        Style="{StaticResource LightButtonStyle}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
                             </Grid>
                         </Border>
                     </Grid>

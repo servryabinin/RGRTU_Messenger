@@ -106,6 +106,19 @@ namespace RGRTU.Messenger.Shared.Network
         /// </summary>
         AdminLogContentResponse = 51,
 
+        /// <summary>
+        /// Админ -> Сервер: добавить пользователя в чат
+        /// </summary>
+        AdminAddChatMember = 52,
+        /// <summary>
+        /// Админ -> Сервер: исключить пользователя из чата
+        /// </summary>
+        AdminRemoveChatMember = 53,
+        /// <summary>
+        /// Сервер -> Админ/Клиент: актуальный список участников чата
+        /// </summary>
+        ChatMembersResponse = 54,
+
         #endregion
 
         #region Системные сообщения (Требование 2.a)

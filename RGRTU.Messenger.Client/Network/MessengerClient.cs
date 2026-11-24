@@ -77,6 +77,21 @@ namespace RGRTU.Messenger.Client.Network
         public event Action<AdminLogContentResponseDto> OnAdminLogContentReceived;
 
         /// <summary>
+        /// Актуальный список участников общего чата.
+        /// </summary>
+        public event Action<ChatMembersResponseDto> OnChatMembersReceived;
+
+        /// <summary>
+        /// Последний полученный список участников чата (для окон, подписавшихся после получения).
+        /// </summary>
+        public ChatMembersResponseDto? LastChatMembersResponse { get; private set; }
+
+        /// <summary>
+        /// Ошибка/уведомление от сервера (например, блокировка/удаление аккаунта).
+        /// </summary>
+        public event Action<string> OnErrorReceived;
+
+        /// <summary>
         /// Семафор, гарантирующий, что запись в сетевой поток не будет перемешана разными потоками UI.
         /// </summary>
         private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -185,6 +200,7 @@ namespace RGRTU.Messenger.Client.Network
 
                         case MessageType.Error:
                             var error = PacketSerializer.DeserializePayload<ErrorDto>(payloadJson);
+                            OnErrorReceived?.Invoke(error.Message);
                             OnAuthFailed?.Invoke(error.Message);
                             break;
 
@@ -206,6 +222,12 @@ namespace RGRTU.Messenger.Client.Network
                         case MessageType.AdminLogContentResponse:
                             var logContent = PacketSerializer.DeserializePayload<AdminLogContentResponseDto>(payloadJson);
                             OnAdminLogContentReceived?.Invoke(logContent);
+                            break;
+
+                        case MessageType.ChatMembersResponse:
+                            var chatMembers = PacketSerializer.DeserializePayload<ChatMembersResponseDto>(payloadJson);
+                            LastChatMembersResponse = chatMembers;
+                            OnChatMembersReceived?.Invoke(chatMembers);
                             break;
                     }
                 }
@@ -333,6 +355,16 @@ namespace RGRTU.Messenger.Client.Network
                 IsBlocked = isBlocked,
                 Reason = reason
             });
+        }
+
+        public Task AddChatMemberAsync(int userId)
+        {
+            return SendPacketAsync(MessageType.AdminAddChatMember, new ChatMemberActionRequestDto { UserId = userId });
+        }
+
+        public Task RemoveChatMemberAsync(int userId)
+        {
+            return SendPacketAsync(MessageType.AdminRemoveChatMember, new ChatMemberActionRequestDto { UserId = userId });
         }
 
         /// <summary>

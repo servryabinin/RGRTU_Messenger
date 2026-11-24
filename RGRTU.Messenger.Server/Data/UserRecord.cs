@@ -56,5 +56,10 @@ namespace RGRTU.Messenger.Server.Data
         /// Дата и время последнего успешного входа.
         /// </summary>
         public DateTime? LastLoginAt { get; set; }
+
+        /// <summary>
+        /// Добавлен ли пользователь администратором в общий чат.
+        /// </summary>
+        public bool IsInChat { get; set; }
     }
 }
