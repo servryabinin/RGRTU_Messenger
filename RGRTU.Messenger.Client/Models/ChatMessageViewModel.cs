@@ -1,40 +1,120 @@
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
+using RGRTU.Messenger.Shared.Models.DTO;
 
 namespace RGRTU.Messenger.Client.Models
 {
-    public class ChatMessageViewModel
+    public class ChatMessageViewModel : INotifyPropertyChanged
     {
+        private string _text = string.Empty;
+        private bool _isEdited;
+        private bool _isSelected;
+        private bool _isSelectionMode;
+        private double _highlightOpacity;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string MessageId { get; init; } = string.Empty;
         public int SenderId { get; init; }
         public string SenderName { get; init; } = string.Empty;
-        public string Text { get; init; } = string.Empty;
         public DateTime Timestamp { get; init; }
         public bool IsOwn { get; init; }
+
+        public string? AttachmentFileName { get; init; }
+        public long AttachmentFileSize { get; init; }
+        public string? AttachmentBase64 { get; init; }
+        public bool IsSticker { get; init; }
+
+        public string? ReplyToMessageId { get; init; }
+        public string? ReplyToSenderName { get; init; }
+        public string? ReplyToText { get; init; }
+
+        public string Text
+        {
+            get => _text;
+            set { if (_text == value) return; _text = value; OnPropertyChanged(); OnPropertyChanged(nameof(TextVisibility)); }
+        }
+
+        public bool IsEdited
+        {
+            get => _isEdited;
+            set { if (_isEdited == value) return; _isEdited = value; OnPropertyChanged(); OnPropertyChanged(nameof(EditedVisibility)); }
+        }
+
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set { if (_isSelected == value) return; _isSelected = value; OnPropertyChanged(); OnPropertyChanged(nameof(SelectionMark)); }
+        }
+
+        public bool IsSelectionMode
+        {
+            get => _isSelectionMode;
+            set { if (_isSelectionMode == value) return; _isSelectionMode = value; OnPropertyChanged(); OnPropertyChanged(nameof(SelectionVisibility)); }
+        }
+
+        public double HighlightOpacity
+        {
+            get => _highlightOpacity;
+            set { if (Math.Abs(_highlightOpacity - value) < 0.001) return; _highlightOpacity = value; OnPropertyChanged(); }
+        }
 
         public string TimeText => Timestamp.ToString("HH:mm");
         public HorizontalAlignment Alignment => IsOwn ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         public Visibility SenderVisibility => IsOwn ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility TextVisibility => string.IsNullOrWhiteSpace(Text) ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility AttachmentVisibility => HasAttachment ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility ReplyVisibility => string.IsNullOrWhiteSpace(ReplyToMessageId) ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility EditedVisibility => IsEdited ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility SelectionVisibility => IsSelectionMode && IsOwn ? Visibility.Visible : Visibility.Collapsed;
+        public string SelectionMark => IsSelected ? "✔" : "";
+
+        public bool HasAttachment => !string.IsNullOrWhiteSpace(AttachmentFileName) && !string.IsNullOrWhiteSpace(AttachmentBase64);
+        public string AttachmentSizeText => HasAttachment ? FormatSize(AttachmentFileSize) : string.Empty;
+        public string AttachmentDisplay => HasAttachment ? $"📎 {AttachmentFileName}" : string.Empty;
+        public string ReplyPreview => string.IsNullOrWhiteSpace(ReplyToText) ? "" : (ReplyToText.Length > 60 ? ReplyToText[..60] + "…" : ReplyToText);
 
         public Brush BubbleBrush { get; init; } = Brushes.White;
         public Brush BorderBrush { get; init; } = Brushes.LightGray;
         public Brush SenderBrush { get; init; } = Brushes.SteelBlue;
 
-        public static ChatMessageViewModel Create(int senderId, string senderName, string text, DateTime timestamp, int currentUserId)
+        public static ChatMessageViewModel Create(ChatMessageDto dto, int currentUserId)
         {
-            bool isOwn = senderId == currentUserId;
-            var (bubble, border, sender) = GetPalette(senderId);
+            bool isOwn = dto.SenderId == currentUserId;
+            var (bubble, border, sender) = GetPalette(dto.SenderId);
             return new ChatMessageViewModel
             {
-                SenderId = senderId,
-                SenderName = senderName,
-                Text = text,
-                Timestamp = timestamp,
+                MessageId = dto.MessageId,
+                SenderId = dto.SenderId,
+                SenderName = dto.SenderName,
+                _text = dto.Text ?? string.Empty,
+                Timestamp = dto.Timestamp,
                 IsOwn = isOwn,
+                AttachmentFileName = dto.AttachmentFileName,
+                AttachmentFileSize = dto.AttachmentFileSize,
+                AttachmentBase64 = dto.AttachmentBase64,
+                IsSticker = dto.IsSticker,
+                _isEdited = dto.IsEdited,
+                ReplyToMessageId = dto.ReplyToMessageId,
+                ReplyToSenderName = dto.ReplyToSenderName,
+                ReplyToText = dto.ReplyToText,
                 BubbleBrush = isOwn ? new LinearGradientBrush(Color.FromRgb(219, 234, 254), Color.FromRgb(191, 219, 254), 45) : bubble,
                 BorderBrush = isOwn ? new SolidColorBrush(Color.FromRgb(147, 197, 253)) : border,
                 SenderBrush = sender
             };
+        }
+
+        private void OnPropertyChanged([CallerMemberName] string? name = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        private static string FormatSize(long bytes)
+        {
+            if (bytes < 1024) return $"{bytes} Б";
+            if (bytes < 1024 * 1024) return $"{bytes / 1024d:0.#} КБ";
+            return $"{bytes / (1024d * 1024d):0.#} МБ";
         }
 
         private static (Brush bubble, Brush border, Brush sender) GetPalette(int userId)

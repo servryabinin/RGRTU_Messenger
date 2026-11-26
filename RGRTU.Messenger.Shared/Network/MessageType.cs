@@ -32,6 +32,22 @@ namespace RGRTU.Messenger.Shared.Network
         /// Сервер -> Всем клиентам: Новое сообщение в чате
         /// </summary>
         BroadcastMessage = 11,
+        /// <summary>
+        /// Клиент -> Сервер: редактирование своего сообщения
+        /// </summary>
+        EditMessage = 12,
+        /// <summary>
+        /// Сервер -> Всем клиентам: сообщение отредактировано
+        /// </summary>
+        MessageEdited = 13,
+        /// <summary>
+        /// Клиент -> Сервер: удаление своих сообщений
+        /// </summary>
+        DeleteMessages = 14,
+        /// <summary>
+        /// Сервер -> Всем клиентам: сообщения удалены
+        /// </summary>
+        MessagesDeleted = 15,
 
         #endregion
 

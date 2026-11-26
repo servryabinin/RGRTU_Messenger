@@ -89,16 +89,120 @@
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid Margin="0,2">
-                                                    <Border MaxWidth="520" Padding="10,8" CornerRadius="12"
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Soft highlight when jumping to replied message -->
+                                                    <Border Grid.ColumnSpan="2" CornerRadius="12" IsHitTestVisible="False"
+                                                            Opacity="{Binding HighlightOpacity}" Margin="-4">
+                                                        <Border.Background>
+                                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                                <GradientStop Color="#003B82F6" Offset="0"/>
+                                                                <GradientStop Color="#553B82F6" Offset="0.5"/>
+                                                                <GradientStop Color="#003B82F6" Offset="1"/>
+                                                            </LinearGradientBrush>
+                                                        </Border.Background>
+                                                    </Border>
+
+                                                    <!-- Selection circle for own messages -->
+                                                    <Border Grid.Column="0" Width="22" Height="22" CornerRadius="11" Margin="0,0,8,0"
+                                                            VerticalAlignment="Center" BorderBrush="{StaticResource AccentBrush}" BorderThickness="2"
+                                                            Background="White" Visibility="{Binding SelectionVisibility}"
+                                                            MouseLeftButtonUp="SelectionCircle_Click" Tag="{Binding}">
+                                                        <TextBlock Text="{Binding SelectionMark}" FontSize="12" FontWeight="Bold"
+                                                                   Foreground="{StaticResource AccentBrush}"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+
+                                                    <Border Grid.Column="1" MaxWidth="520" Padding="10,8" CornerRadius="12"
                                                             Background="{Binding BubbleBrush}"
                                                             BorderBrush="{Binding BorderBrush}" BorderThickness="1"
-                                                            HorizontalAlignment="{Binding Alignment}">
+                                                            HorizontalAlignment="{Binding Alignment}"
+                                                            Tag="{Binding}" MouseRightButtonUp="MessageBorder_MouseRightButtonUp">
+                                                        <Border.ContextMenu>
+                                                            <ContextMenu Opened="MessageContextMenu_Opened" Placement="MousePoint"
+                                                                         HasDropShadow="False" Background="Transparent" BorderThickness="0">
+                                                                <ContextMenu.Template>
+                                                                    <ControlTemplate TargetType="ContextMenu">
+                                                                        <Border Background="White" BorderBrush="{StaticResource BorderBrushBlue}"
+                                                                                BorderThickness="1" CornerRadius="8" Padding="6" Margin="8">
+                                                                            <Border.Effect>
+                                                                                <DropShadowEffect Color="Black" Direction="270" ShadowDepth="2" Opacity="0.12" BlurRadius="8"/>
+                                                                            </Border.Effect>
+                                                                            <StackPanel IsItemsHost="True"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </ContextMenu.Template>
+                                                                <ContextMenu.Resources>
+                                                                    <Style TargetType="MenuItem">
+                                                                        <Setter Property="Foreground" Value="{StaticResource TextBrushBlue}"/>
+                                                                        <Setter Property="FontSize" Value="13"/>
+                                                                        <Setter Property="Padding" Value="10,8"/>
+                                                                        <Setter Property="Cursor" Value="Hand"/>
+                                                                        <Setter Property="Template">
+                                                                            <Setter.Value>
+                                                                                <ControlTemplate TargetType="MenuItem">
+                                                                                    <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                                        <ContentPresenter ContentSource="Header"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsHighlighted" Value="True">
+                                                                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentLightBrush}"/>
+                                                                                        </Trigger>
+                                                                                        <Trigger Property="IsEnabled" Value="False">
+                                                                                            <Setter Property="Opacity" Value="0.45"/>
+                                                                                        </Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                    </Style>
+                                                                </ContextMenu.Resources>
+                                                                <MenuItem Header="Ответить" Click="ReplyMenuItem_Click"/>
+                                                                <MenuItem Header="Изменить" Click="EditMenuItem_Click"/>
+                                                                <MenuItem Header="Копировать текст" Click="CopyMenuItem_Click"/>
+                                                                <MenuItem Header="Удалить" Click="DeleteMenuItem_Click"/>
+                                                                <MenuItem Header="Выделить" Click="SelectMenuItem_Click"/>
+                                                            </ContextMenu>
+                                                        </Border.ContextMenu>
                                                         <StackPanel>
                                                             <TextBlock Text="{Binding SenderName}" FontSize="11" FontWeight="SemiBold"
                                                                        Foreground="{Binding SenderBrush}" Margin="0,0,0,2"
                                                                        Visibility="{Binding SenderVisibility}"/>
+
+                                                            <!-- Reply preview -->
+                                                            <Border Visibility="{Binding ReplyVisibility}" Background="#FFFFFFAA"
+                                                                    BorderBrush="{StaticResource AccentBrush}" BorderThickness="2,0,0,0"
+                                                                    Padding="6,2" Margin="0,0,0,4" CornerRadius="2"
+                                                                    Cursor="Hand" MouseLeftButtonUp="ReplyPreview_Click" Tag="{Binding}">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding ReplyToSenderName}" FontSize="11" FontWeight="SemiBold"
+                                                                               Foreground="{StaticResource AccentBrush}"/>
+                                                                    <TextBlock Text="{Binding ReplyPreview}" FontSize="11"
+                                                                               Foreground="#64748B" TextTrimming="CharacterEllipsis"/>
+                                                                </StackPanel>
+                                                            </Border>
+
+                                                            <Border Visibility="{Binding AttachmentVisibility}" Background="#FFFFFFCC"
+                                                                    BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1"
+                                                                    CornerRadius="8" Padding="8,6" Margin="0,0,0,4" Cursor="Hand"
+                                                                    MouseLeftButtonUp="AttachmentBlock_Click" Tag="{Binding}">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding AttachmentDisplay}" FontSize="13"
+                                                                               Foreground="{StaticResource TextBrushBlue}" TextWrapping="Wrap"/>
+                                                                    <TextBlock Text="{Binding AttachmentSizeText}" FontSize="11"
+                                                                               Foreground="#64748B" Margin="0,2,0,0"/>
+                                                                    <TextBlock Text="Нажмите, чтобы сохранить" FontSize="10"
+                                                                               Foreground="#64748B"/>
+                                                                </StackPanel>
+                                                            </Border>
+
                                                             <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="13"
-                                                                       Foreground="#1E293B"/>
+                                                                       Foreground="#1E293B" Visibility="{Binding TextVisibility}"/>
+                                                            <TextBlock Text="Изменено" FontSize="10" FontStyle="Italic"
+                                                                       Foreground="#64748B" Visibility="{Binding EditedVisibility}" Margin="0,2,0,0"/>
                                                             <TextBlock Text="{Binding TimeText}" FontSize="10" Margin="0,4,0,0"
                                                                        HorizontalAlignment="Right" Foreground="#64748B"/>
                                                         </StackPanel>
@@ -114,19 +218,143 @@
                                 </Grid>
 
                                 <Grid x:Name="ChatInputGrid" Grid.Row="1">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
 
-                                    <TextBox x:Name="MessageInputTextBox" Grid.Column="0" Height="42" Padding="12,0" FontSize="14"
-                                             BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1"
-                                             VerticalContentAlignment="Center"
-                                             KeyDown="MessageInputTextBox_KeyDown" TextWrapping="Wrap" AcceptsReturn="True"/>
+                                    <!-- Превью ответа / редактирования / вложения -->
+                                    <StackPanel Grid.Row="0" Margin="0,0,0,6">
+                                        <Border x:Name="ReplyPreviewBorder" Visibility="Collapsed"
+                                                Background="#F8FBFF" BorderBrush="{StaticResource AccentBrush}"
+                                                BorderThickness="2,0,0,0" CornerRadius="4" Padding="8,6" Margin="0,0,0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock x:Name="ReplyPreviewSenderTextBlock" FontSize="12" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource AccentBrush}"/>
+                                                    <TextBlock x:Name="ReplyPreviewTextBlock" FontSize="12"
+                                                               Foreground="#64748B" TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="✕" Width="26" Height="26" Margin="8,0,0,0"
+                                                        Style="{StaticResource LightButtonStyle}" Padding="0"
+                                                        Click="CancelReplyButton_Click"/>
+                                            </Grid>
+                                        </Border>
 
-                                    <Button x:Name="SendButton" Grid.Column="1" Content="➤" Width="52" Height="42" Margin="8,0,0,0"
-                                            Background="{StaticResource AccentBrush}" Foreground="White" FontSize="18"
-                                            Style="{StaticResource PrimaryButtonStyle}" Click="SendButton_Click"/>
+                                        <Border x:Name="EditPreviewBorder" Visibility="Collapsed"
+                                                Background="#FFF7ED" BorderBrush="#F59E0B"
+                                                BorderThickness="2,0,0,0" CornerRadius="4" Padding="8,6" Margin="0,0,0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="EditPreviewTextBlock" FontSize="12"
+                                                           Foreground="#92400E" TextTrimming="CharacterEllipsis"/>
+                                                <Button Grid.Column="1" Content="✕" Width="26" Height="26" Margin="8,0,0,0"
+                                                        Style="{StaticResource LightButtonStyle}" Padding="0"
+                                                        Click="CancelEditButton_Click"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border x:Name="AttachmentPreviewBorder" Visibility="Collapsed"
+                                                Background="#F8FBFF" BorderBrush="{StaticResource BorderBrushBlue}"
+                                                BorderThickness="1" CornerRadius="8" Padding="8,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="AttachmentPreviewTextBlock" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource TextBrushBlue}" TextTrimming="CharacterEllipsis"/>
+                                                <Button Grid.Column="1" Content="✕" Width="26" Height="26" Margin="8,0,0,0"
+                                                        Style="{StaticResource LightButtonStyle}" Padding="0"
+                                                        Click="RemoveAttachmentButton_Click"/>
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <Grid Grid.Row="1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Кнопка вложения -->
+                                        <Button x:Name="AttachButton" Grid.Column="0" Content="+" Width="42" Height="42" Margin="0,0,8,0"
+                                                FontSize="22" FontWeight="Bold" Padding="0"
+                                                Style="{StaticResource LightButtonStyle}" Click="AttachButton_Click"/>
+                                        <Popup x:Name="AttachPopup" PlacementTarget="{Binding ElementName=AttachButton}"
+                                               Placement="Top" StaysOpen="False" AllowsTransparency="True">
+                                            <Border Background="White" BorderBrush="{StaticResource BorderBrushBlue}"
+                                                    BorderThickness="1" CornerRadius="8" Padding="6" Margin="0,0,0,6">
+                                                <Button Content="Прикрепить файл" Padding="12,8"
+                                                        Style="{StaticResource LightButtonStyle}" Click="PickFileButton_Click"/>
+                                            </Border>
+                                        </Popup>
+
+                                        <TextBox x:Name="MessageInputTextBox" Grid.Column="1" Height="42" Padding="12,0" FontSize="14"
+                                                 BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1"
+                                                 VerticalContentAlignment="Center"
+                                                 KeyDown="MessageInputTextBox_KeyDown" TextWrapping="Wrap" AcceptsReturn="True"/>
+
+                                        <!-- Смайлики -->
+                                        <Button x:Name="EmojiButton" Grid.Column="2" Content="😊" Width="42" Height="42" Margin="8,0,0,0"
+                                                FontSize="20" Padding="0" Style="{StaticResource LightButtonStyle}"
+                                                Click="EmojiButton_Click" MouseEnter="EmojiButton_MouseEnter"/>
+                                        <Popup x:Name="EmojiPopup" PlacementTarget="{Binding ElementName=EmojiButton}"
+                                               Placement="Top" StaysOpen="False" AllowsTransparency="True">
+                                            <Border Background="White" BorderBrush="{StaticResource BorderBrushBlue}"
+                                                    BorderThickness="1" CornerRadius="8" Padding="8" Margin="0,0,0,6">
+                                                <WrapPanel Width="260">
+                                                    <WrapPanel.Resources>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource LightButtonStyle}">
+                                                            <Setter Property="Width" Value="36"/>
+                                                            <Setter Property="Height" Value="36"/>
+                                                            <Setter Property="Margin" Value="2"/>
+                                                            <Setter Property="Padding" Value="0"/>
+                                                            <Setter Property="FontSize" Value="20"/>
+                                                        </Style>
+                                                    </WrapPanel.Resources>
+                                                    <Button Content="😀" Click="EmojiPickButton_Click"/><Button Content="😁" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="😂" Click="EmojiPickButton_Click"/><Button Content="😊" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="😍" Click="EmojiPickButton_Click"/><Button Content="😎" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="👍" Click="EmojiPickButton_Click"/><Button Content="🙏" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="🔥" Click="EmojiPickButton_Click"/><Button Content="🎉" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="❤️" Click="EmojiPickButton_Click"/><Button Content="✅" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="🤔" Click="EmojiPickButton_Click"/><Button Content="😢" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="😡" Click="EmojiPickButton_Click"/><Button Content="👏" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="💡" Click="EmojiPickButton_Click"/><Button Content="📎" Click="EmojiPickButton_Click"/>
+                                                    <Button Content="🚀" Click="EmojiPickButton_Click"/><Button Content="⭐" Click="EmojiPickButton_Click"/>
+                                                </WrapPanel>
+                                            </Border>
+                                        </Popup>
+
+                                        <Grid Grid.Column="3" Margin="8,0,0,0">
+                                            <Button x:Name="SendButton" Content="➤" Width="52" Height="42"
+                                                    Background="{StaticResource AccentBrush}" Foreground="White" FontSize="18"
+                                                    Style="{StaticResource PrimaryButtonStyle}" Click="SendButton_Click"/>
+                                            <StackPanel x:Name="EditActionsPanel" Orientation="Horizontal" Visibility="Collapsed">
+                                                <Button Content="Редактировать" Height="42" Padding="10,0" Margin="0,0,6,0"
+                                                        Style="{StaticResource PrimaryButtonStyle}" Background="{StaticResource AccentBrush}"
+                                                        Click="ConfirmEditButton_Click"/>
+                                                <Button Content="Отмена" Height="42" Padding="10,0"
+                                                        Style="{StaticResource LightButtonStyle}" Click="CancelEditButton_Click"/>
+                                            </StackPanel>
+                                            <StackPanel x:Name="SelectionActionsPanel" Orientation="Horizontal" Visibility="Collapsed">
+                                                <Button Content="Удалить" Height="42" Padding="10,0" Margin="0,0,6,0"
+                                                        Style="{StaticResource DangerButtonStyle}" Click="DeleteSelectedButton_Click"/>
+                                                <Button Content="Отмена" Height="42" Padding="10,0"
+                                                        Style="{StaticResource LightButtonStyle}" Click="CancelSelectionButton_Click"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
                                 </Grid>
                             </Grid>
                         </Border>

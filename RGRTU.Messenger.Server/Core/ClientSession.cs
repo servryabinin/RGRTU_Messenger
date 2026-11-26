@@ -141,6 +141,14 @@ namespace RGRTU.Messenger.Server.Core
                     await HandleChatMessageAsync(json);
                     break;
 
+                case MessageType.EditMessage:
+                    await HandleEditMessageAsync(json);
+                    break;
+
+                case MessageType.DeleteMessages:
+                    await HandleDeleteMessagesAsync(json);
+                    break;
+
                 case MessageType.KickUser:
                     await HandleKickAsync(json);
                     break;
@@ -240,14 +248,62 @@ namespace RGRTU.Messenger.Server.Core
             msg.SenderId = UserId;
             msg.SenderName = Username;
             msg.Timestamp = DateTime.Now;
+            if (string.IsNullOrWhiteSpace(msg.MessageId))
+                msg.MessageId = Guid.NewGuid().ToString("N");
 
-            if (string.IsNullOrWhiteSpace(msg.Text))
+            bool hasText = !string.IsNullOrWhiteSpace(msg.Text);
+            bool hasAttachment = !string.IsNullOrWhiteSpace(msg.AttachmentFileName) &&
+                                 !string.IsNullOrWhiteSpace(msg.AttachmentBase64);
+
+            if (!hasText && !hasAttachment)
                 return;
 
-            Log.Information("Чат: {Sender} пишет: {Text}", msg.SenderName, msg.Text);
+            if (!hasAttachment)
+            {
+                msg.AttachmentFileName = null;
+                msg.AttachmentBase64 = null;
+                msg.AttachmentFileSize = 0;
+            }
+
+            if (hasAttachment)
+                Log.Information("Чат: {Sender} отправил файл {File} ({Size} байт)", msg.SenderName, msg.AttachmentFileName, msg.AttachmentFileSize);
+            else
+                Log.Information("Чат: {Sender} пишет: {Text}", msg.SenderName, msg.Text);
 
             var broadcastPacket = PacketSerializer.Serialize(MessageType.BroadcastMessage, msg);
             await _server.BroadcastMessageToChatMembersAsync(broadcastPacket);
+        }
+
+        private async Task HandleEditMessageAsync(string json)
+        {
+            if (!IsAuthenticated || !IsInChat) return;
+
+            var req = PacketSerializer.DeserializePayload<EditMessageRequestDto>(json);
+            if (string.IsNullOrWhiteSpace(req.MessageId) || string.IsNullOrWhiteSpace(req.NewText))
+                return;
+
+            // Сервер не хранит историю; он только ретранслирует изменение участникам чата.
+            // Владелец проверяется на клиенте по SenderId в сообщении; дополнительно можно хранить историю.
+            var dto = new MessageEditedDto { MessageId = req.MessageId, NewText = req.NewText.Trim() };
+            var packet = PacketSerializer.Serialize(MessageType.MessageEdited, dto);
+            await _server.BroadcastMessageToChatMembersAsync(packet);
+            Log.Information("Чат: {Sender} отредактировал сообщение {Id}", Username, req.MessageId);
+        }
+
+        private async Task HandleDeleteMessagesAsync(string json)
+        {
+            if (!IsAuthenticated || !IsInChat) return;
+
+            var req = PacketSerializer.DeserializePayload<DeleteMessagesRequestDto>(json);
+            if (req.MessageIds == null || req.MessageIds.Count == 0)
+                return;
+
+            var dto = new MessagesDeletedDto { MessageIds = req.MessageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList() };
+            if (dto.MessageIds.Count == 0) return;
+
+            var packet = PacketSerializer.Serialize(MessageType.MessagesDeleted, dto);
+            await _server.BroadcastMessageToChatMembersAsync(packet);
+            Log.Information("Чат: {Sender} удалил сообщений: {Count}", Username, dto.MessageIds.Count);
         }
 
         /// <summary>

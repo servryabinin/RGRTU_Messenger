@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -80,6 +82,9 @@ namespace RGRTU.Messenger.Client.Network
         /// Актуальный список участников общего чата.
         /// </summary>
         public event Action<ChatMembersResponseDto> OnChatMembersReceived;
+
+        public event Action<MessageEditedDto> OnMessageEdited;
+        public event Action<MessagesDeletedDto> OnMessagesDeleted;
 
         /// <summary>
         /// Последний полученный список участников чата (для окон, подписавшихся после получения).
@@ -229,6 +234,16 @@ namespace RGRTU.Messenger.Client.Network
                             LastChatMembersResponse = chatMembers;
                             OnChatMembersReceived?.Invoke(chatMembers);
                             break;
+
+                        case MessageType.MessageEdited:
+                            var edited = PacketSerializer.DeserializePayload<MessageEditedDto>(payloadJson);
+                            OnMessageEdited?.Invoke(edited);
+                            break;
+
+                        case MessageType.MessagesDeleted:
+                            var deleted = PacketSerializer.DeserializePayload<MessagesDeletedDto>(payloadJson);
+                            OnMessagesDeleted?.Invoke(deleted);
+                            break;
                     }
                 }
             }
@@ -365,6 +380,16 @@ namespace RGRTU.Messenger.Client.Network
         public Task RemoveChatMemberAsync(int userId)
         {
             return SendPacketAsync(MessageType.AdminRemoveChatMember, new ChatMemberActionRequestDto { UserId = userId });
+        }
+
+        public Task EditChatMessageAsync(string messageId, string newText)
+        {
+            return SendPacketAsync(MessageType.EditMessage, new EditMessageRequestDto { MessageId = messageId, NewText = newText });
+        }
+
+        public Task DeleteChatMessagesAsync(IEnumerable<string> messageIds)
+        {
+            return SendPacketAsync(MessageType.DeleteMessages, new DeleteMessagesRequestDto { MessageIds = messageIds.ToList() });
         }
 
         /// <summary>
