@@ -37,6 +37,7 @@ namespace RGRTU.Messenger.Client.Views
         private readonly ObservableCollection<ChatMessageViewModel> _chatMessages = new();
         private readonly ObservableCollection<ChatMemberViewModel> _chatMembers = new();
         private bool _isInChat;
+        private bool _isChatRemovedByAdmin;
         private bool _isLoggingOut;
 
         private string? _pendingAttachmentPath;
@@ -98,7 +99,6 @@ namespace RGRTU.Messenger.Client.Views
 
             UsersDataGrid.ItemsSource = _adminUsers;
             MessagesListBox.ItemsSource = _chatMessages;
-            UsersListBox.ItemsSource = _chatMembers;
 
             _isInChat = _currentUser.IsInChat;
             ApplyChatAccessState();
@@ -217,17 +217,9 @@ namespace RGRTU.Messenger.Client.Views
                     return;
                 }
 
-                _isInChat = response.IsCurrentUserInChat || _isAdmin && response.Members.Any(m => m.Id == _currentUser.UserId && m.IsInChat);
-                // Для обычного пользователя сервер задаёт IsCurrentUserInChat; для админа он тоже в списке.
-                if (_isAdmin)
-                {
-                    var self = response.Members.FirstOrDefault(m => m.Id == _currentUser.UserId);
-                    _isInChat = self?.IsInChat ?? response.IsCurrentUserInChat;
-                }
-                else
-                {
-                    _isInChat = response.IsCurrentUserInChat;
-                }
+                var self = response.Members.FirstOrDefault(m => m.Id == _currentUser.UserId);
+                _isInChat = self?.IsInChat ?? response.IsCurrentUserInChat;
+                _isChatRemovedByAdmin = self?.IsChatRemovedByAdmin ?? response.IsCurrentUserChatRemovedByAdmin;
 
                 _chatMembers.Clear();
                 foreach (var m in response.Members)
@@ -237,7 +229,9 @@ namespace RGRTU.Messenger.Client.Views
                         Id = m.Id,
                         DisplayName = m.DisplayName,
                         IsInChat = m.IsInChat,
-                        CanManage = response.CanManage
+                        CanManage = response.CanManage,
+                        IsOnline = m.IsOnline,
+                        IsChatRemovedByAdmin = m.IsChatRemovedByAdmin
                     });
                 }
 
@@ -249,8 +243,44 @@ namespace RGRTU.Messenger.Client.Views
         {
             bool canChat = _isInChat;
             MessagesListBox.Visibility = canChat ? Visibility.Visible : Visibility.Collapsed;
-            NotInChatTextBlock.Visibility = canChat ? Visibility.Collapsed : Visibility.Visible;
             ChatInputGrid.Visibility = canChat ? Visibility.Visible : Visibility.Collapsed;
+
+            if (canChat)
+            {
+                NotInChatTextBlock.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            NotInChatTextBlock.Visibility = Visibility.Visible;
+            NotInChatTextBlock.MouseLeftButtonUp -= NotInChatTextBlock_MouseLeftButtonUp;
+            if (_isChatRemovedByAdmin)
+            {
+                NotInChatTextBlock.Text = "Вы были исключены из чата администратором";
+                NotInChatTextBlock.Cursor = Cursors.Arrow;
+                NotInChatTextBlock.TextDecorations = null;
+            }
+            else
+            {
+                NotInChatTextBlock.Text = "Вы не добавлены в чат. Нажмите, чтобы вернуться";
+                NotInChatTextBlock.Cursor = Cursors.Hand;
+                NotInChatTextBlock.TextDecorations = TextDecorations.Underline;
+                NotInChatTextBlock.MouseLeftButtonUp += NotInChatTextBlock_MouseLeftButtonUp;
+            }
+        }
+
+        private async void NotInChatTextBlock_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_isInChat || _isChatRemovedByAdmin) return;
+            try
+            {
+                await _client.JoinChatAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Ошибка при попытке вернуться в чат");
+                MessageBox.Show($"Не удалось вернуться в чат: {ex.Message}", "Ошибка",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void Client_OnErrorReceived(string errorMessage)
@@ -637,19 +667,26 @@ namespace RGRTU.Messenger.Client.Views
             }
         }
 
-        private async void ChatMemberActionButton_Click(object sender, RoutedEventArgs e)
+        private void ChatMenuButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!_isAdmin) return;
-            if (sender is not System.Windows.Controls.Button btn || btn.Tag is not int userId)
-                return;
+            LeaveChatButton.IsEnabled = _isInChat;
+            ChatMenuPopup.IsOpen = !ChatMenuPopup.IsOpen;
+        }
 
-            var member = _chatMembers.FirstOrDefault(m => m.Id == userId);
-            if (member == null) return;
+        private async void LeaveChatButton_Click(object sender, RoutedEventArgs e)
+        {
+            ChatMenuPopup.IsOpen = false;
+            if (!_isInChat) return;
+            await _client.LeaveChatAsync();
+        }
 
-            if (member.IsInChat)
-                await _client.RemoveChatMemberAsync(userId);
-            else
-                await _client.AddChatMemberAsync(userId);
+        private void ChatInfoButton_Click(object sender, RoutedEventArgs e)
+        {
+            var infoWindow = new ChatInfoWindow(_chatMembers, _chatMessages)
+            {
+                Owner = this
+            };
+            infoWindow.ShowDialog();
         }
 
         #endregion

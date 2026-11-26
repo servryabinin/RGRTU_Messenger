@@ -217,6 +217,14 @@ namespace RGRTU.Messenger.Server.Core
                     await HandleChatMemberChangeAsync(json, false);
                     break;
 
+                case MessageType.ChatLeave:
+                    await HandleChatLeaveAsync();
+                    break;
+
+                case MessageType.ChatJoin:
+                    await HandleChatJoinAsync();
+                    break;
+
                 case MessageType.Ping:
                     await SendPacketAsync(PacketSerializer.Serialize(MessageType.Pong, new { }));
                     break;
@@ -457,11 +465,43 @@ namespace RGRTU.Messenger.Server.Core
             if (user is null || (user.IsBlocked && add))
                 return;
 
-            await _server.Users.SetChatMemberAsync(request.UserId, add);
+            await _server.Users.SetChatMemberAsync(request.UserId, add, removedByAdmin: !add);
             await _server.BroadcastChatMembersAsync();
 
             Log.Information("Администратор {Admin} {Action} пользователя {User} в чате",
                 Username, add ? "добавил" : "исключил", user.DisplayName);
+        }
+
+        private async Task HandleChatLeaveAsync()
+        {
+            if (!IsAuthenticated) return;
+            var user = await _server.Users.GetByIdAsync(UserId);
+            if (user is null || !user.IsInChat) return;
+
+            await _server.Users.SetChatMemberAsync(UserId, false, removedByAdmin: false);
+            await _server.BroadcastChatMembersAsync();
+            Log.Information("Пользователь {User} самостоятельно покинул чат", Username);
+        }
+
+        private async Task HandleChatJoinAsync()
+        {
+            if (!IsAuthenticated) return;
+            var user = await _server.Users.GetByIdAsync(UserId);
+            if (user is null || user.IsBlocked) return;
+
+            if (user.IsChatRemovedByAdmin)
+            {
+                await SendPacketAsync(PacketSerializer.Serialize(MessageType.Error,
+                    new ErrorDto { Message = "Администратор исключил вас из чата. Вернуться можно только после добавления администратором." }));
+                return;
+            }
+
+            bool joined = await _server.Users.TryJoinChatAsync(UserId);
+            if (joined)
+            {
+                await _server.BroadcastChatMembersAsync();
+                Log.Information("Пользователь {User} вернулся в чат", Username);
+            }
         }
 
         /// <summary>

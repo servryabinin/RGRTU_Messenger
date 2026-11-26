@@ -61,11 +61,13 @@ CREATE TABLE IF NOT EXISTS Users
     BlockReason  TEXT    NULL,
     CreatedAt    TEXT    NOT NULL,
     LastLoginAt  TEXT    NULL,
-    IsInChat     INTEGER NOT NULL DEFAULT 0
+    IsInChat     INTEGER NOT NULL DEFAULT 0,
+    IsChatRemovedByAdmin INTEGER NOT NULL DEFAULT 0
 );";
             await command.ExecuteNonQueryAsync();
 
             await EnsureColumnExistsAsync(connection, "Users", "IsInChat", "INTEGER NOT NULL DEFAULT 0");
+            await EnsureColumnExistsAsync(connection, "Users", "IsChatRemovedByAdmin", "INTEGER NOT NULL DEFAULT 0");
         }
 
         /// <summary>
@@ -278,7 +280,38 @@ ORDER BY DisplayName COLLATE NOCASE, Login COLLATE NOCASE;";
         /// <summary>
         /// Добавляет или исключает пользователя из общего чата.
         /// </summary>
-        public async Task<bool> SetChatMemberAsync(int id, bool isInChat)
+        public async Task<bool> SetChatMemberAsync(int id, bool isInChat, bool? removedByAdmin = null)
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync();
+
+            var command = connection.CreateCommand();
+            if (removedByAdmin.HasValue)
+            {
+                command.CommandText = @"
+UPDATE Users
+SET IsInChat = $inChat, IsChatRemovedByAdmin = $removed
+WHERE Id = $id AND IsBlocked = 0;";
+                command.Parameters.AddWithValue("$removed", removedByAdmin.Value ? 1 : 0);
+            }
+            else
+            {
+                command.CommandText = @"
+UPDATE Users
+SET IsInChat = $inChat
+WHERE Id = $id AND IsBlocked = 0;";
+            }
+
+            command.Parameters.AddWithValue("$inChat", isInChat ? 1 : 0);
+            command.Parameters.AddWithValue("$id", id);
+
+            return await command.ExecuteNonQueryAsync() > 0;
+        }
+
+        /// <summary>
+        /// Позволяет пользователю самому вернуться в чат, если он не был исключён администратором.
+        /// </summary>
+        public async Task<bool> TryJoinChatAsync(int id)
         {
             await using var connection = CreateConnection();
             await connection.OpenAsync();
@@ -286,9 +319,8 @@ ORDER BY DisplayName COLLATE NOCASE, Login COLLATE NOCASE;";
             var command = connection.CreateCommand();
             command.CommandText = @"
 UPDATE Users
-SET IsInChat = $inChat
-WHERE Id = $id AND IsBlocked = 0;";
-            command.Parameters.AddWithValue("$inChat", isInChat ? 1 : 0);
+SET IsInChat = 1
+WHERE Id = $id AND IsBlocked = 0 AND IsChatRemovedByAdmin = 0;";
             command.Parameters.AddWithValue("$id", id);
 
             return await command.ExecuteNonQueryAsync() > 0;
@@ -368,7 +400,9 @@ WHERE Id = $id AND IsBlocked = 0;";
                     ? null
                     : ParseDate(reader.GetString(reader.GetOrdinal("LastLoginAt"))),
                 IsInChat = !reader.IsDBNull(reader.GetOrdinal("IsInChat")) &&
-                           reader.GetInt32(reader.GetOrdinal("IsInChat")) != 0
+                           reader.GetInt32(reader.GetOrdinal("IsInChat")) != 0,
+                IsChatRemovedByAdmin = !reader.IsDBNull(reader.GetOrdinal("IsChatRemovedByAdmin")) &&
+                                       reader.GetInt32(reader.GetOrdinal("IsChatRemovedByAdmin")) != 0
             };
         }
 

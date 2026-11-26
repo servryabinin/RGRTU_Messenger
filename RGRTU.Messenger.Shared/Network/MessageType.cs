@@ -134,6 +134,14 @@ namespace RGRTU.Messenger.Shared.Network
         /// Сервер -> Админ/Клиент: актуальный список участников чата
         /// </summary>
         ChatMembersResponse = 54,
+        /// <summary>
+        /// Клиент -> Сервер: покинуть чат самостоятельно
+        /// </summary>
+        ChatLeave = 55,
+        /// <summary>
+        /// Клиент -> Сервер: вернуться в чат самостоятельно
+        /// </summary>
+        ChatJoin = 56,
 
         #endregion
 

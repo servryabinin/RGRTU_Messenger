@@ -382,6 +382,16 @@ namespace RGRTU.Messenger.Client.Network
             return SendPacketAsync(MessageType.AdminRemoveChatMember, new ChatMemberActionRequestDto { UserId = userId });
         }
 
+        public Task LeaveChatAsync()
+        {
+            return SendPacketAsync(MessageType.ChatLeave, new { });
+        }
+
+        public Task JoinChatAsync()
+        {
+            return SendPacketAsync(MessageType.ChatJoin, new { });
+        }
+
         public Task EditChatMessageAsync(string messageId, string newText)
         {
             return SendPacketAsync(MessageType.EditMessage, new EditMessageRequestDto { MessageId = messageId, NewText = newText });

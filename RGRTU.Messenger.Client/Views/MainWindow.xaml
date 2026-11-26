@@ -52,21 +52,45 @@
                 <!-- ВКЛАДКА ЧАТА -->
                 <TabItem x:Name="ChatTabItem" Header="Чат">
                     <Grid Margin="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3*" MinWidth="360" />
-                            <ColumnDefinition Width="1*" MinWidth="180" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- ЛЕВАЯ ЧАСТЬ: Окно чата -->
-                        <Border Grid.Column="0" Background="White" CornerRadius="10" Padding="12" Margin="0,0,8,0"
+                        <Border Background="White" CornerRadius="10" Padding="12"
                                 BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
                             <Grid>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                <!-- Верхняя панель чата -->
+                                <Grid Grid.Row="0" Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button x:Name="ChatInfoButton" HorizontalAlignment="Left" Padding="8,4"
+                                            Style="{StaticResource LightButtonStyle}" Click="ChatInfoButton_Click">
+                                        <TextBlock Text="Чат" FontSize="16" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextBrushBlue}"/>
+                                    </Button>
+
+                                    <Button x:Name="ChatMenuButton" Grid.Column="1" Content="⋮" Width="40" Height="36"
+                                            FontSize="20" FontWeight="Bold" Padding="0"
+                                            Style="{StaticResource LightButtonStyle}" Click="ChatMenuButton_Click"/>
+                                    <Popup x:Name="ChatMenuPopup" PlacementTarget="{Binding ElementName=ChatMenuButton}"
+                                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                        <Border Background="White" BorderBrush="{StaticResource BorderBrushBlue}"
+                                                BorderThickness="1" CornerRadius="8" Padding="6" Margin="0,6,0,0">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="Black" Direction="270" ShadowDepth="2" Opacity="0.12" BlurRadius="8"/>
+                                            </Border.Effect>
+                                            <Button x:Name="LeaveChatButton" Content="Покинуть чат" Padding="12,8"
+                                                    Style="{StaticResource LightButtonStyle}" Click="LeaveChatButton_Click"/>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+
+                                <Grid Grid.Row="1" Margin="0,0,0,8">
                                     <ListBox x:Name="MessagesListBox" BorderThickness="0" Background="Transparent"
                                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -217,7 +241,7 @@
                                                FontSize="18" FontWeight="SemiBold" Foreground="#64748B"/>
                                 </Grid>
 
-                                <Grid x:Name="ChatInputGrid" Grid.Row="1">
+                                <Grid x:Name="ChatInputGrid" Grid.Row="2">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
@@ -356,56 +380,6 @@
                                         </Grid>
                                     </Grid>
                                 </Grid>
-                            </Grid>
-                        </Border>
-
-                        <!-- ПРАВАЯ ЧАСТЬ: Список участников -->
-                        <Border Grid.Column="1" Background="White" CornerRadius="10" Padding="12"
-                                BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Text="Участники чата" FontSize="15" FontWeight="Bold" Margin="0,0,0,10"
-                                           Foreground="{StaticResource TextBrushBlue}"/>
-
-                                <ListBox x:Name="UsersListBox" Grid.Row="1" BorderThickness="0" Background="Transparent"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                    <ListBox.ItemContainerStyle>
-                                        <Style TargetType="ListBoxItem">
-                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                            <Setter Property="Padding" Value="2"/>
-                                            <Setter Property="Focusable" Value="False"/>
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="ListBoxItem">
-                                                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter />
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </ListBox.ItemContainerStyle>
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,2">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource TextBrushBlue}" TextTrimming="CharacterEllipsis"/>
-                                                <Button Grid.Column="1" Content="{Binding ActionText}" Padding="10,4" Margin="8,0,0,0"
-                                                        FontSize="12" Visibility="{Binding ActionVisibility}"
-                                                        Tag="{Binding Id}" Click="ChatMemberActionButton_Click"
-                                                        Style="{StaticResource LightButtonStyle}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
                             </Grid>
                         </Border>
                     </Grid>

@@ -9,5 +9,7 @@ namespace RGRTU.Messenger.Shared.Models.DTO.Admin
         public string Login { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public bool IsInChat { get; set; }
+        public bool IsOnline { get; set; }
+        public bool IsChatRemovedByAdmin { get; set; }
     }
 }

@@ -133,7 +133,9 @@ namespace RGRTU.Messenger.Server.Core
                     Id = u.Id,
                     Login = u.Login,
                     DisplayName = u.DisplayName,
-                    IsInChat = u.IsInChat
+                    IsInChat = u.IsInChat,
+                    IsOnline = GetUserStatus(u.Id) == UserStatus.Online,
+                    IsChatRemovedByAdmin = u.IsChatRemovedByAdmin
                 })
                 .ToList();
 
@@ -142,6 +144,7 @@ namespace RGRTU.Messenger.Server.Core
                 IsSuccess = true,
                 CanManage = isAdmin,
                 IsCurrentUserInChat = self?.IsInChat == true,
+                IsCurrentUserChatRemovedByAdmin = self?.IsChatRemovedByAdmin == true,
                 Members = members
             };
         }

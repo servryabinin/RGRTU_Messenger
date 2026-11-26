@@ -61,5 +61,11 @@ namespace RGRTU.Messenger.Server.Data
         /// Добавлен ли пользователь администратором в общий чат.
         /// </summary>
         public bool IsInChat { get; set; }
+
+        /// <summary>
+        /// Исключён ли пользователь из чата администратором.
+        /// Пока true, пользователь не может вернуться сам.
+        /// </summary>
+        public bool IsChatRemovedByAdmin { get; set; }
     }
 }
