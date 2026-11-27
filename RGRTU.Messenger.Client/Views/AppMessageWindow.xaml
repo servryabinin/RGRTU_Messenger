@@ -1,0 +1,50 @@
+<Window x:Class="RGRTU.Messenger.Client.Views.AppMessageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Сообщение" Width="440" SizeToContent="Height" MaxHeight="420"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        ShowInTaskbar="False" Background="{StaticResource AppBackgroundBrush}">
+    <Window.Triggers>
+        <EventTrigger RoutedEvent="Loaded">
+            <BeginStoryboard>
+                <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="RootBorder" Storyboard.TargetProperty="Opacity"
+                                     From="0" To="1" Duration="0:0:0.18"/>
+                    <DoubleAnimation Storyboard.TargetName="RootBorder"
+                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                     From="0.94" To="1" Duration="0:0:0.18"/>
+                    <DoubleAnimation Storyboard.TargetName="RootBorder"
+                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                     From="0.94" To="1" Duration="0:0:0.18"/>
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+    </Window.Triggers>
+    <Grid Margin="16">
+        <Border x:Name="RootBorder" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="20"
+                BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1"
+                RenderTransformOrigin="0.5,0.5">
+            <Border.RenderTransform>
+                <ScaleTransform/>
+            </Border.RenderTransform>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Name="TitleTextBlock" FontSize="16" FontWeight="Bold"
+                           Foreground="{StaticResource TextBrushBlue}"/>
+
+                <TextBlock x:Name="MessageTextBlock" Grid.Row="1" FontSize="13"
+                           Foreground="#475569" TextWrapping="Wrap" Margin="0,10,0,18"
+                           VerticalAlignment="Top"/>
+
+                <Button Grid.Row="2" Content="Ок" Width="110" Height="34"
+                        HorizontalAlignment="Right" Style="{StaticResource PrimaryButtonStyle}"
+                        Click="OkButton_Click"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

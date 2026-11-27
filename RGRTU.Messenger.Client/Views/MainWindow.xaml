@@ -209,7 +209,81 @@
                                                                 </StackPanel>
                                                             </Border>
 
-                                                            <Border Visibility="{Binding AttachmentVisibility}" Background="#FFFFFFCC"
+                                                            <!-- Передача файла: видна только отправителю, пока файл не загружен -->
+                                                            <Border Visibility="{Binding UploadingVisibility}" Background="#F1F5F9"
+                                                                    BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8"
+                                                                    Padding="10,8" Margin="0,0,0,4">
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Grid Width="36" Height="36" Margin="0,0,10,0">
+                                                                        <TextBlock Text="📄" FontSize="18" Foreground="#94A3B8"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        <TextBlock Text="⟳" FontSize="18" FontWeight="Bold"
+                                                                                   Foreground="#64748B"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                                   RenderTransformOrigin="0.5,0.5">
+                                                                            <TextBlock.RenderTransform>
+                                                                                <RotateTransform/>
+                                                                            </TextBlock.RenderTransform>
+                                                                            <TextBlock.Triggers>
+                                                                                <EventTrigger RoutedEvent="Loaded">
+                                                                                    <BeginStoryboard>
+                                                                                        <Storyboard>
+                                                                                            <DoubleAnimation
+                                                                                                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                                                                From="0" To="360" Duration="0:0:1"
+                                                                                                RepeatBehavior="Forever"/>
+                                                                                        </Storyboard>
+                                                                                    </BeginStoryboard>
+                                                                                </EventTrigger>
+                                                                            </TextBlock.Triggers>
+                                                                        </TextBlock>
+                                                                    </Grid>
+                                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                        <TextBlock Text="{Binding AttachmentDisplay}" FontSize="13"
+                                                                                   FontWeight="SemiBold" Foreground="#475569"
+                                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                        <TextBlock Text="{Binding UploadProgressText}" FontSize="11"
+                                                                                   Foreground="#64748B" Margin="0,2,0,0"/>
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </Border>
+
+                                                            <!-- Изображение: показываем прямо в чате, по клику открываем во внешнем просмотрщике -->
+                                                            <Border Visibility="{Binding ImageVisibility}" CornerRadius="10"
+                                                                    Margin="0,0,0,4" Cursor="Hand" ClipToBounds="True"
+                                                                    Tag="{Binding}" MouseLeftButtonUp="MediaAttachment_Click">
+                                                                <Image Source="{Binding ImageSource}" MaxWidth="320" MaxHeight="240"
+                                                                       Stretch="Uniform" StretchDirection="DownOnly"/>
+                                                            </Border>
+
+                                                            <!-- Видео: автовоспроизведение без звука + переключатель звука -->
+                                                            <Border Visibility="{Binding VideoVisibility}" CornerRadius="10"
+                                                                    Margin="0,0,0,4" Cursor="Hand" Background="Black"
+                                                                    ClipToBounds="True" Tag="{Binding}"
+                                                                    MouseLeftButtonUp="MediaAttachment_Click">
+                                                                <Grid MaxWidth="360" MaxHeight="240">
+                                                                    <MediaElement Source="{Binding VideoSourcePath}"
+                                                                                  LoadedBehavior="Manual" UnloadedBehavior="Manual"
+                                                                                  Stretch="Uniform" IsHitTestVisible="False"
+                                                                                  IsMuted="True" Volume="0"
+                                                                                  Loaded="VideoMediaElement_Loaded"
+                                                                                  MediaOpened="VideoMediaElement_MediaOpened"
+                                                                                  Unloaded="VideoMediaElement_Unloaded"/>
+                                                                    <Button Content="{Binding MuteIcon}" HorizontalAlignment="Right"
+                                                                            VerticalAlignment="Top" Width="30" Height="30" Margin="6"
+                                                                            FontSize="14" Padding="0" Background="#AA000000"
+                                                                            Foreground="White" Tag="{Binding}" Cursor="Hand"
+                                                                            Style="{StaticResource PrimaryButtonStyle}"
+                                                                            Click="VideoMuteButton_Click"/>
+                                                                </Grid>
+                                                            </Border>
+
+                                                            <!-- Обычный файл: сохранить через проводник -->
+                                                            <Border Visibility="{Binding FileVisibility}" Background="#FFFFFFCC"
                                                                     BorderBrush="{StaticResource BorderBrushBlue}" BorderThickness="1"
                                                                     CornerRadius="8" Padding="8,6" Margin="0,0,0,4" Cursor="Hand"
                                                                     MouseLeftButtonUp="AttachmentBlock_Click" Tag="{Binding}">

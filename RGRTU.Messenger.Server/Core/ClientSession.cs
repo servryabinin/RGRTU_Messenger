@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using RGRTU.Messenger.Server.Data;
+using RGRTU.Messenger.Shared.Constants;
 using RGRTU.Messenger.Shared.Extensions;
 using RGRTU.Messenger.Shared.Models.DTO;
 using RGRTU.Messenger.Shared.Models.DTO.Admin;
@@ -38,6 +40,7 @@ namespace RGRTU.Messenger.Server.Core
         /// Объект сервера
         /// </summary>
         private readonly MessengerServer _server;
+        private readonly SemaphoreSlim _sendLock = new(1, 1);
 
         /// <summary>
         /// Идентификатор пользователя в базе данных (0, если не авторизован).
@@ -75,6 +78,16 @@ namespace RGRTU.Messenger.Server.Core
         private int _closedByAdmin;
 
         /// <summary>
+        /// Ожидаемые размеры файлов, которые сейчас передаются этим клиентом.
+        /// </summary>
+        private readonly Dictionary<string, long> _pendingFileSizes = new();
+
+        /// <summary>
+        /// Сколько байт файла уже принято по каждому идентификатору передачи.
+        /// </summary>
+        private readonly Dictionary<string, long> _receivedFileBytes = new();
+
+        /// <summary>
         /// Инициализирует новую сессию клиента.
         /// </summary>
         public ClientSession(int id, TcpClient tcpClient, MessengerServer server)
@@ -96,7 +109,8 @@ namespace RGRTU.Messenger.Server.Core
                 while (_tcpClient.Connected)
                 {
                     var (messageType, payloadJson) = PacketSerializer.Deserialize(_stream);
-                    Log.Information("Получен пакет от ClientID={Id}: Type={Type}", Id, messageType);
+                    if (messageType != MessageType.FileChunk)
+                        Log.Information("Получен пакет от ClientID={Id}: Type={Type}", Id, messageType);
 
                     await ProcessMessageAsync(messageType, payloadJson);
                 }
@@ -122,6 +136,8 @@ namespace RGRTU.Messenger.Server.Core
                 }
 
                 _server.RemoveClient(Id);
+                _pendingFileSizes.Clear();
+                _receivedFileBytes.Clear();
                 _tcpClient.Close();
             }
         }
@@ -139,6 +155,14 @@ namespace RGRTU.Messenger.Server.Core
 
                 case MessageType.SendTextMessage:
                     await HandleChatMessageAsync(json);
+                    break;
+
+                case MessageType.FileMetadata:
+                    await HandleFileMetadataAsync(json);
+                    break;
+
+                case MessageType.FileChunk:
+                    await HandleFileChunkAsync(json);
                     break;
 
                 case MessageType.EditMessage:
@@ -280,6 +304,85 @@ namespace RGRTU.Messenger.Server.Core
 
             var broadcastPacket = PacketSerializer.Serialize(MessageType.BroadcastMessage, msg);
             await _server.BroadcastMessageToChatMembersAsync(broadcastPacket);
+        }
+
+        /// <summary>
+        /// Начинает приём файла: проверяет размер и пересылает метаданные участникам чата.
+        /// </summary>
+        private async Task HandleFileMetadataAsync(string json)
+        {
+            if (!IsAuthenticated || !IsInChat)
+                return;
+
+            var msg = PacketSerializer.DeserializePayload<ChatMessageDto>(json);
+            if (string.IsNullOrWhiteSpace(msg.MessageId))
+                msg.MessageId = Guid.NewGuid().ToString("N");
+
+            msg.SenderId = UserId;
+            msg.SenderName = Username;
+            msg.Timestamp = DateTime.Now;
+            msg.AttachmentBase64 = null;
+
+            if (string.IsNullOrWhiteSpace(msg.AttachmentFileName) || msg.AttachmentFileSize <= 0)
+                return;
+
+            if (msg.AttachmentFileSize > AppConstants.MAX_FILE_SIZE)
+            {
+                await SendPacketAsync(PacketSerializer.Serialize(
+                    MessageType.FileUploadError,
+                    new ErrorDto { Message = AppConstants.ERROR_FILE_TOO_LARGE }));
+                return;
+            }
+
+            _pendingFileSizes[msg.MessageId] = msg.AttachmentFileSize;
+            _receivedFileBytes[msg.MessageId] = 0;
+
+            Log.Information("Чат: {Sender} начинает передачу файла {File} ({Size} байт)",
+                msg.SenderName, msg.AttachmentFileName, msg.AttachmentFileSize);
+
+            var packet = PacketSerializer.Serialize(MessageType.FileMetadata, msg);
+            await _server.BroadcastMessageToChatMembersExceptAsync(UserId, packet);
+        }
+
+        /// <summary>
+        /// Пересылает очередной кусок файла участникам чата.
+        /// </summary>
+        private async Task HandleFileChunkAsync(string json)
+        {
+            if (!IsAuthenticated || !IsInChat)
+                return;
+
+            var chunk = PacketSerializer.DeserializePayload<FileChunkDto>(json);
+            if (chunk == null || string.IsNullOrWhiteSpace(chunk.FileId) || chunk.Data == null)
+                return;
+
+            if (!_pendingFileSizes.TryGetValue(chunk.FileId, out long expectedSize))
+                return;
+
+            long received = _receivedFileBytes.TryGetValue(chunk.FileId, out long current)
+                ? current + chunk.Data.LongLength
+                : chunk.Data.LongLength;
+
+            if (received > expectedSize || received > AppConstants.MAX_FILE_SIZE)
+            {
+                _pendingFileSizes.Remove(chunk.FileId);
+                _receivedFileBytes.Remove(chunk.FileId);
+                await SendPacketAsync(PacketSerializer.Serialize(
+                    MessageType.FileUploadError,
+                    new ErrorDto { Message = AppConstants.ERROR_FILE_TOO_LARGE }));
+                return;
+            }
+
+            _receivedFileBytes[chunk.FileId] = received;
+
+            var packet = PacketSerializer.Serialize(MessageType.FileChunk, chunk);
+            await _server.BroadcastMessageToChatMembersExceptAsync(UserId, packet);
+
+            if (chunk.IsLast || received >= expectedSize)
+            {
+                _pendingFileSizes.Remove(chunk.FileId);
+                _receivedFileBytes.Remove(chunk.FileId);
+            }
         }
 
         private async Task HandleEditMessageAsync(string json)
@@ -465,7 +568,24 @@ namespace RGRTU.Messenger.Server.Core
             if (user is null || (user.IsBlocked && add))
                 return;
 
-            await _server.Users.SetChatMemberAsync(request.UserId, add, removedByAdmin: !add);
+            if (add)
+            {
+                // Администратор не втягивает пользователя в чат принудительно:
+                // он разрешает возврат, а пользователь подтверждает его сам.
+                if (user.IsInChat)
+                {
+                    await _server.Users.SetChatMemberAsync(request.UserId, true, removedByAdmin: false, invitedByAdmin: false, hasLeftChat: false);
+                }
+                else
+                {
+                    await _server.Users.SetChatMemberAsync(request.UserId, false, removedByAdmin: false, invitedByAdmin: true, hasLeftChat: false);
+                }
+            }
+            else
+            {
+                await _server.Users.SetChatMemberAsync(request.UserId, false, removedByAdmin: true, invitedByAdmin: false, hasLeftChat: false);
+            }
+
             await _server.BroadcastChatMembersAsync();
 
             Log.Information("Администратор {Admin} {Action} пользователя {User} в чате",
@@ -478,7 +598,7 @@ namespace RGRTU.Messenger.Server.Core
             var user = await _server.Users.GetByIdAsync(UserId);
             if (user is null || !user.IsInChat) return;
 
-            await _server.Users.SetChatMemberAsync(UserId, false, removedByAdmin: false);
+            await _server.Users.SetChatMemberAsync(UserId, false, removedByAdmin: false, invitedByAdmin: false, hasLeftChat: true);
             await _server.BroadcastChatMembersAsync();
             Log.Information("Пользователь {User} самостоятельно покинул чат", Username);
         }
@@ -541,9 +661,18 @@ namespace RGRTU.Messenger.Server.Core
         /// </summary>
         public async Task SendPacketAsync(byte[] packetData)
         {
-            if (_tcpClient.Connected)
+            if (!_tcpClient.Connected)
+                return;
+
+            await _sendLock.WaitAsync();
+            try
             {
-                await _stream.WriteAsync(packetData, 0, packetData.Length);
+                if (_tcpClient.Connected)
+                    await _stream.WriteAsync(packetData, 0, packetData.Length);
+            }
+            finally
+            {
+                _sendLock.Release();
             }
         }
     }

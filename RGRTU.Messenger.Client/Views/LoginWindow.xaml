@@ -16,10 +16,23 @@
             <TextBlock Text="Мессенджер РГРТУ" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,20" Foreground="#1F2937"/>
 
             <TextBlock Text="Логин:" Margin="0,0,0,5" Foreground="#4B5563"/>
-            <TextBox x:Name="LoginTextBox" Height="35" Padding="10,0" FontSize="14" BorderBrush="#D1D5DB" BorderThickness="1" Margin="0,0,0,15"/>
+            <TextBox x:Name="LoginTextBox" Height="35" Padding="10,0" FontSize="14" BorderBrush="#D1D5DB" BorderThickness="1"
+                     VerticalContentAlignment="Center" Margin="0,0,0,15"/>
 
             <TextBlock Text="Пароль:" Margin="0,0,0,5" Foreground="#4B5563"/>
-            <PasswordBox x:Name="PasswordBox" Height="35" Padding="10,0" FontSize="14" BorderBrush="#D1D5DB" BorderThickness="1" Margin="0,0,0,20"/>
+            <PasswordBox x:Name="PasswordBox" Height="35" FontSize="14" BorderBrush="#D1D5DB" BorderThickness="1"
+                         VerticalContentAlignment="Center" Margin="0,0,0,20">
+                <PasswordBox.Template>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border Background="White" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="10,0" VerticalAlignment="Center"
+                                          Focusable="False" HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                    </ControlTemplate>
+                </PasswordBox.Template>
+            </PasswordBox>
 
             <Button x:Name="LoginButton" Content="Войти" Height="40" FontSize="16" FontWeight="SemiBold" 
                     Background="#3B82F6" Foreground="White" BorderThickness="0" Cursor="Hand" Click="LoginButton_Click">

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ using System.Windows.Media;
 using RGRTU.Messenger.Client.Models;
 using RGRTU.Messenger.Client.Network;
 using RGRTU.Messenger.Client.Services;
+using RGRTU.Messenger.Shared.Constants;
 using RGRTU.Messenger.Shared.Models.DTO;
 using RGRTU.Messenger.Shared.Models.DTO.Admin;
 using RGRTU.Messenger.Shared.Extensions;
@@ -38,10 +40,15 @@ namespace RGRTU.Messenger.Client.Views
         private readonly ObservableCollection<ChatMemberViewModel> _chatMembers = new();
         private bool _isInChat;
         private bool _isChatRemovedByAdmin;
+        private bool _isChatInvitedByAdmin;
+        private bool _isChatHasLeft;
         private bool _isLoggingOut;
 
         private string? _pendingAttachmentPath;
         private string? _pendingAttachmentName;
+        private bool _isUploadingFile;
+        private string? _activeUploadMessageId;
+        private bool _uploadCancelled;
 
         private ChatMessageViewModel? _replyToMessage;
         private ChatMessageViewModel? _editingMessage;
@@ -110,6 +117,7 @@ namespace RGRTU.Messenger.Client.Views
             _client.OnChatMembersReceived += Client_OnChatMembersReceived;
             _client.OnMessageEdited += Client_OnMessageEdited;
             _client.OnMessagesDeleted += Client_OnMessagesDeleted;
+            _client.OnFileUploadError += Client_OnFileUploadError;
 
             if (_isAdmin)
             {
@@ -163,6 +171,11 @@ namespace RGRTU.Messenger.Client.Views
         {
             Dispatcher.Invoke(() =>
             {
+                // Защита от дубликата: файл, отправленный этим же клиентом,
+                // уже показан локально с прогрессом загрузки.
+                if (_chatMessages.Any(m => m.MessageId == message.MessageId))
+                    return;
+
                 var vm = ChatMessageViewModel.Create(message, _currentUser.UserId);
                 vm.IsSelectionMode = _isSelectionMode;
                 _chatMessages.Add(vm);
@@ -204,6 +217,10 @@ namespace RGRTU.Messenger.Client.Views
                     row.UpdateStatus(status.Status);
                 else if (_isAdmin)
                     _ = RefreshUsersAsync(showStatus: false);
+
+                var chatMember = _chatMembers.FirstOrDefault(m => m.Id == status.UserId);
+                if (chatMember != null)
+                    chatMember.IsOnline = status.Status != RGRTU.Messenger.Shared.Models.DTO.Enums.UserStatus.Offline;
             });
         }
 
@@ -220,6 +237,8 @@ namespace RGRTU.Messenger.Client.Views
                 var self = response.Members.FirstOrDefault(m => m.Id == _currentUser.UserId);
                 _isInChat = self?.IsInChat ?? response.IsCurrentUserInChat;
                 _isChatRemovedByAdmin = self?.IsChatRemovedByAdmin ?? response.IsCurrentUserChatRemovedByAdmin;
+                _isChatInvitedByAdmin = self?.IsChatInvitedByAdmin ?? response.IsCurrentUserChatInvitedByAdmin;
+                _isChatHasLeft = self?.HasLeftChat ?? response.IsCurrentUserHasLeftChat;
 
                 _chatMembers.Clear();
                 foreach (var m in response.Members)
@@ -231,7 +250,9 @@ namespace RGRTU.Messenger.Client.Views
                         IsInChat = m.IsInChat,
                         CanManage = response.CanManage,
                         IsOnline = m.IsOnline,
-                        IsChatRemovedByAdmin = m.IsChatRemovedByAdmin
+                        IsChatRemovedByAdmin = m.IsChatRemovedByAdmin,
+                        IsChatInvitedByAdmin = m.IsChatInvitedByAdmin,
+                        HasLeftChat = m.HasLeftChat
                     });
                 }
 
@@ -255,22 +276,36 @@ namespace RGRTU.Messenger.Client.Views
             NotInChatTextBlock.MouseLeftButtonUp -= NotInChatTextBlock_MouseLeftButtonUp;
             if (_isChatRemovedByAdmin)
             {
-                NotInChatTextBlock.Text = "Вы были исключены из чата администратором";
+                NotInChatTextBlock.Text = "Администратор исключил вас из чата";
                 NotInChatTextBlock.Cursor = Cursors.Arrow;
                 NotInChatTextBlock.TextDecorations = null;
             }
-            else
+            else if (_isChatInvitedByAdmin)
             {
-                NotInChatTextBlock.Text = "Вы не добавлены в чат. Нажмите, чтобы вернуться";
+                NotInChatTextBlock.Text = "Администратор добавил вас в чат. Нажмите, чтобы вернуться";
                 NotInChatTextBlock.Cursor = Cursors.Hand;
                 NotInChatTextBlock.TextDecorations = TextDecorations.Underline;
                 NotInChatTextBlock.MouseLeftButtonUp += NotInChatTextBlock_MouseLeftButtonUp;
+            }
+            else if (_isChatHasLeft)
+            {
+                NotInChatTextBlock.Text = "Вы вышли из чата. Нажмите, чтобы вернуться";
+                NotInChatTextBlock.Cursor = Cursors.Hand;
+                NotInChatTextBlock.TextDecorations = TextDecorations.Underline;
+                NotInChatTextBlock.MouseLeftButtonUp += NotInChatTextBlock_MouseLeftButtonUp;
+            }
+            else
+            {
+                NotInChatTextBlock.Text = "Вы не добавлены в чат";
+                NotInChatTextBlock.Cursor = Cursors.Arrow;
+                NotInChatTextBlock.TextDecorations = null;
             }
         }
 
         private async void NotInChatTextBlock_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if (_isInChat || _isChatRemovedByAdmin) return;
+            if (!_isChatInvitedByAdmin && !_isChatHasLeft) return;
             try
             {
                 await _client.JoinChatAsync();
@@ -343,25 +378,10 @@ namespace RGRTU.Messenger.Client.Views
             bool hasAttachment = !string.IsNullOrWhiteSpace(_pendingAttachmentPath);
             if (string.IsNullOrEmpty(text) && !hasAttachment) return;
 
-            string? attachmentBase64 = null;
-            string? attachmentName = null;
-            long attachmentSize = 0;
-
             if (hasAttachment)
             {
-                try
-                {
-                    byte[] bytes = await System.IO.File.ReadAllBytesAsync(_pendingAttachmentPath!);
-                    attachmentBase64 = Convert.ToBase64String(bytes);
-                    attachmentName = _pendingAttachmentName;
-                    attachmentSize = bytes.LongLength;
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Не удалось прочитать файл: {ex.Message}", "Ошибка",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
+                await SendFileMessageAsync(text);
+                return;
             }
 
             var messageDto = new ChatMessageDto
@@ -371,21 +391,177 @@ namespace RGRTU.Messenger.Client.Views
                 SenderName = _currentUser.Username,
                 Text = text,
                 Timestamp = DateTime.Now,
-                AttachmentFileName = attachmentName,
-                AttachmentFileSize = attachmentSize,
-                AttachmentBase64 = attachmentBase64,
                 IsSticker = false,
                 ReplyToMessageId = _replyToMessage?.MessageId,
                 ReplyToSenderName = _replyToMessage?.SenderName,
                 ReplyToText = _replyToMessage != null ? GetReplyPreviewText(_replyToMessage) : null
             };
 
-            Log.Information("Отправка сообщения в чат: {Text}{File}", text,
-                hasAttachment ? $" [file:{attachmentName}]" : string.Empty);
+            Log.Information("Отправка сообщения в чат: {Text}", text);
             await _client.SendPacketAsync(MessageType.SendTextMessage, messageDto);
             MessageInputTextBox.Clear();
-            ClearPendingAttachment();
             ClearReply();
+        }
+
+        /// <summary>
+        /// Отправляет файл кусками, чтобы не превышать лимит одного сетевого пакета.
+        /// Пока файл передаётся, он виден только отправителю с индикатором загрузки.
+        /// </summary>
+        private async Task SendFileMessageAsync(string text)
+        {
+            if (_isUploadingFile) return;
+
+            _isUploadingFile = true;
+            _uploadCancelled = false;
+            _activeUploadMessageId = null;
+
+            try
+            {
+                string path = _pendingAttachmentPath!;
+                string fileName = _pendingAttachmentName ?? Path.GetFileName(path);
+
+                long fileSize;
+                try
+                {
+                    fileSize = new FileInfo(path).Length;
+                }
+                catch (Exception ex)
+                {
+                    ShowAppMessage("Ошибка", $"Не удалось прочитать файл: {ex.Message}");
+                    return;
+                }
+
+                if (fileSize > AppConstants.MAX_FILE_SIZE)
+                {
+                    ShowAppMessage("Ограничение размера", AppConstants.ERROR_FILE_TOO_LARGE);
+                    return;
+                }
+
+                if (fileSize == 0)
+                {
+                    ShowAppMessage("Ошибка", "Нельзя отправить пустой файл");
+                    return;
+                }
+
+                byte[] bytes;
+                try
+                {
+                    bytes = await File.ReadAllBytesAsync(path);
+                }
+                catch (Exception ex)
+                {
+                    ShowAppMessage("Ошибка", $"Не удалось прочитать файл: {ex.Message}");
+                    return;
+                }
+
+                string messageId = Guid.NewGuid().ToString("N");
+                var messageDto = new ChatMessageDto
+                {
+                    MessageId = messageId,
+                    SenderId = _currentUser.UserId,
+                    SenderName = _currentUser.Username,
+                    Text = text,
+                    Timestamp = DateTime.Now,
+                    AttachmentFileName = fileName,
+                    AttachmentFileSize = fileSize,
+                    AttachmentBase64 = Convert.ToBase64String(bytes),
+                    IsSticker = false,
+                    ReplyToMessageId = _replyToMessage?.MessageId,
+                    ReplyToSenderName = _replyToMessage?.SenderName,
+                    ReplyToText = _replyToMessage != null ? GetReplyPreviewText(_replyToMessage) : null
+                };
+
+                // Локальная копия сообщения с прогрессом; остальные увидят файл
+                // только после получения последнего куска.
+                var localMessage = ChatMessageViewModel.Create(messageDto, _currentUser.UserId);
+                localMessage.IsUploading = true;
+                localMessage.SetUploadProgress(0);
+                _chatMessages.Add(localMessage);
+                MessagesListBox.ScrollIntoView(localMessage);
+
+                _activeUploadMessageId = messageId;
+
+                try
+                {
+                    // Метаданные передаём без содержимого — оно пойдёт кусками.
+                    messageDto.AttachmentBase64 = null;
+                    await _client.SendPacketAsync(MessageType.FileMetadata, messageDto);
+
+                    int chunkSize = AppConstants.FILE_CHUNK_SIZE;
+                    for (int offset = 0; offset < bytes.Length; offset += chunkSize)
+                    {
+                        if (_uploadCancelled)
+                            break;
+
+                        int length = Math.Min(chunkSize, bytes.Length - offset);
+                        var chunkBytes = new byte[length];
+                        Buffer.BlockCopy(bytes, offset, chunkBytes, 0, length);
+
+                        var chunk = new FileChunkDto
+                        {
+                            FileId = messageId,
+                            Offset = offset,
+                            Data = chunkBytes,
+                            IsLast = offset + length >= bytes.Length
+                        };
+
+                        await _client.SendPacketAsync(MessageType.FileChunk, chunk);
+
+                        localMessage.SetUploadProgress((offset + length) * 100.0 / bytes.Length);
+                        await Task.Yield();
+                    }
+
+                    if (_uploadCancelled)
+                    {
+                        _chatMessages.Remove(localMessage);
+                    }
+                    else
+                    {
+                        localMessage.CompleteUpload();
+                        Log.Information("Чат: файл {File} ({Size} байт) передан", fileName, fileSize);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _chatMessages.Remove(localMessage);
+                    Log.Warning(ex, "Не удалось отправить файл {File}", fileName);
+                    ShowAppMessage("Ошибка", "Не удалось отправить файл. Проверьте соединение с сервером.");
+                }
+
+                MessageInputTextBox.Clear();
+                ClearPendingAttachment();
+                ClearReply();
+            }
+            finally
+            {
+                _isUploadingFile = false;
+                _activeUploadMessageId = null;
+                _uploadCancelled = false;
+            }
+        }
+
+        private void Client_OnFileUploadError(string message)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _uploadCancelled = true;
+
+                if (!string.IsNullOrWhiteSpace(_activeUploadMessageId))
+                {
+                    var uploading = _chatMessages.FirstOrDefault(
+                        m => m.MessageId == _activeUploadMessageId);
+                    if (uploading != null)
+                        _chatMessages.Remove(uploading);
+                }
+
+                ShowAppMessage("Ошибка отправки файла", message);
+            });
+        }
+
+        private void ShowAppMessage(string title, string message)
+        {
+            var window = new AppMessageWindow(title, message) { Owner = this };
+            window.ShowDialog();
         }
 
         private static string GetReplyPreviewText(ChatMessageViewModel msg)
@@ -411,6 +587,23 @@ namespace RGRTU.Messenger.Client.Views
 
             if (dialog.ShowDialog(this) == true)
             {
+                long size;
+                try
+                {
+                    size = new FileInfo(dialog.FileName).Length;
+                }
+                catch (Exception ex)
+                {
+                    ShowAppMessage("Ошибка", $"Не удалось прочитать файл: {ex.Message}");
+                    return;
+                }
+
+                if (size > AppConstants.MAX_FILE_SIZE)
+                {
+                    ShowAppMessage("Ограничение размера", AppConstants.ERROR_FILE_TOO_LARGE);
+                    return;
+                }
+
                 _pendingAttachmentPath = dialog.FileName;
                 _pendingAttachmentName = System.IO.Path.GetFileName(dialog.FileName);
                 AttachmentPreviewTextBlock.Text = $"📎 {_pendingAttachmentName}";
@@ -437,6 +630,13 @@ namespace RGRTU.Messenger.Client.Views
         {
             if (sender is FrameworkElement fe && fe.Tag is ChatMessageViewModel msg && fe.ContextMenu != null)
             {
+                // Пока файл передаётся, контекстные действия над ним недоступны.
+                if (msg.IsUploading)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
                 fe.ContextMenu.Tag = msg;
                 fe.ContextMenu.PlacementTarget = fe;
                 fe.ContextMenu.IsOpen = true;
@@ -640,6 +840,72 @@ namespace RGRTU.Messenger.Client.Views
             EmojiPopup.IsOpen = false;
         }
 
+        private void MediaAttachment_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.Tag is ChatMessageViewModel msg)
+                MediaHelper.OpenExternally(msg.LocalPath);
+        }
+
+        private void VideoMediaElement_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is MediaElement media)
+                ApplyMuteState(media);
+        }
+
+        private void VideoMediaElement_MediaOpened(object sender, RoutedEventArgs e)
+        {
+            if (sender is MediaElement media)
+            {
+                ApplyMuteState(media);
+                media.Play();
+            }
+        }
+
+        private void VideoMediaElement_Unloaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is MediaElement media)
+                media.Pause();
+        }
+
+        private static void ApplyMuteState(MediaElement media)
+        {
+            bool muted = (media.DataContext as ChatMessageViewModel)?.IsMuted ?? true;
+            media.IsMuted = muted;
+            media.Volume = muted ? 0 : 1;
+        }
+
+        private void VideoMuteButton_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;
+            if (sender is not Button btn || btn.Tag is not ChatMessageViewModel msg) return;
+
+            msg.IsMuted = !msg.IsMuted;
+            var media = FindVisualChild<MediaElement>(btn.Parent as DependencyObject);
+            if (media != null)
+            {
+                media.IsMuted = msg.IsMuted;
+                media.Volume = msg.IsMuted ? 0 : 1;
+            }
+        }
+
+        private static T? FindVisualChild<T>(DependencyObject? parent) where T : DependencyObject
+        {
+            if (parent == null) return null;
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T typed)
+                    return typed;
+
+                var nested = FindVisualChild<T>(child);
+                if (nested != null)
+                    return nested;
+            }
+
+            return null;
+        }
+
         private void AttachmentBlock_Click(object sender, MouseButtonEventArgs e)
         {
             if (sender is not System.Windows.FrameworkElement fe || fe.Tag is not ChatMessageViewModel msg)
@@ -682,7 +948,7 @@ namespace RGRTU.Messenger.Client.Views
 
         private void ChatInfoButton_Click(object sender, RoutedEventArgs e)
         {
-            var infoWindow = new ChatInfoWindow(_chatMembers, _chatMessages)
+            var infoWindow = new ChatInfoWindow(_client, _chatMembers, _chatMessages)
             {
                 Owner = this
             };

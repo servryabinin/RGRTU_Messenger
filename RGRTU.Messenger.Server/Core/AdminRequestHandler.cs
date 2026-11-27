@@ -173,7 +173,7 @@ namespace RGRTU.Messenger.Server.Core
                 if (user.Role == Data.UserRole.Admin && await _users.CountAdminsAsync() == 1)
                     return Fail("Нельзя удалить последнего администратора");
 
-                await _users.SetChatMemberAsync(request.Id, false, removedByAdmin: true);
+                await _users.SetChatMemberAsync(request.Id, false, removedByAdmin: true, invitedByAdmin: false);
                 await _users.DeleteAsync(request.Id);
                 int disconnected = await _server.DisconnectUserAsync(
                     request.Id,
@@ -227,7 +227,7 @@ namespace RGRTU.Messenger.Server.Core
                 int disconnected = 0;
                 if (request.IsBlocked)
                 {
-                    await _users.SetChatMemberAsync(request.Id, false, removedByAdmin: true);
+                    await _users.SetChatMemberAsync(request.Id, false, removedByAdmin: true, invitedByAdmin: false);
                     disconnected = await _server.DisconnectUserAsync(
                         request.Id,
                         $"Ваша учётная запись заблокирована администратором. Причина: {reason}");

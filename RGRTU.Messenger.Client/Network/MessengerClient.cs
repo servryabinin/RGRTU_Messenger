@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
@@ -87,6 +88,11 @@ namespace RGRTU.Messenger.Client.Network
         public event Action<MessagesDeletedDto> OnMessagesDeleted;
 
         /// <summary>
+        /// Событие ошибки передачи файла (например, превышен максимальный размер).
+        /// </summary>
+        public event Action<string> OnFileUploadError;
+
+        /// <summary>
         /// Последний полученный список участников чата (для окон, подписавшихся после получения).
         /// </summary>
         public ChatMembersResponseDto? LastChatMembersResponse { get; private set; }
@@ -100,6 +106,17 @@ namespace RGRTU.Messenger.Client.Network
         /// Семафор, гарантирующий, что запись в сетевой поток не будет перемешана разными потоками UI.
         /// </summary>
         private readonly SemaphoreSlim _sendLock = new(1, 1);
+
+        /// <summary>
+        /// Незавершённые входящие передачи файлов (собираются из кусков).
+        /// </summary>
+        private readonly Dictionary<string, IncomingFile> _incomingFiles = new();
+
+        private sealed class IncomingFile
+        {
+            public ChatMessageDto Metadata { get; init; } = new();
+            public MemoryStream Buffer { get; } = new();
+        }
 
         /// <summary>
         /// Получает значение, указывающее, установлено ли в данный момент активное соединение с сервером.
@@ -183,7 +200,8 @@ namespace RGRTU.Messenger.Client.Network
                 while (_isConnected && _tcpClient.Connected)
                 {
                     var (messageType, payloadJson) = PacketSerializer.Deserialize(_stream);
-                    Log.Information("Получен пакет от сервера: Type={Type}", messageType);
+                    if (messageType != MessageType.FileChunk)
+                        Log.Information("Получен пакет от сервера: Type={Type}", messageType);
 
                     switch (messageType)
                     {
@@ -244,6 +262,51 @@ namespace RGRTU.Messenger.Client.Network
                             var deleted = PacketSerializer.DeserializePayload<MessagesDeletedDto>(payloadJson);
                             OnMessagesDeleted?.Invoke(deleted);
                             break;
+
+                        case MessageType.FileMetadata:
+                            var fileMetadata = PacketSerializer.DeserializePayload<ChatMessageDto>(payloadJson);
+                            if (!string.IsNullOrWhiteSpace(fileMetadata.MessageId) &&
+                                fileMetadata.AttachmentFileSize > 0)
+                            {
+                                if (_incomingFiles.TryGetValue(fileMetadata.MessageId, out var previous))
+                                    previous.Buffer.Dispose();
+
+                                _incomingFiles[fileMetadata.MessageId] = new IncomingFile
+                                {
+                                    Metadata = fileMetadata
+                                };
+                            }
+                            break;
+
+                        case MessageType.FileChunk:
+                            var fileChunk = PacketSerializer.DeserializePayload<FileChunkDto>(payloadJson);
+                            if (fileChunk?.Data == null || string.IsNullOrWhiteSpace(fileChunk.FileId))
+                                break;
+
+                            if (!_incomingFiles.TryGetValue(fileChunk.FileId, out var incoming))
+                                break;
+
+                            incoming.Buffer.Write(fileChunk.Data, 0, fileChunk.Data.Length);
+                            if (fileChunk.IsLast ||
+                                incoming.Buffer.Length >= incoming.Metadata.AttachmentFileSize)
+                            {
+                                _incomingFiles.Remove(fileChunk.FileId);
+
+                                var complete = incoming.Metadata;
+                                complete.AttachmentBase64 = Convert.ToBase64String(
+                                    incoming.Buffer.GetBuffer(), 0, (int)incoming.Buffer.Length);
+                                incoming.Buffer.Dispose();
+
+                                OnMessageReceived?.Invoke(complete);
+                            }
+                            break;
+
+                        case MessageType.FileUploadError:
+                            var fileError = PacketSerializer.DeserializePayload<ErrorDto>(payloadJson);
+                            OnFileUploadError?.Invoke(string.IsNullOrWhiteSpace(fileError?.Message)
+                                ? "Не удалось отправить файл"
+                                : fileError.Message);
+                            break;
                     }
                 }
             }
@@ -254,6 +317,10 @@ namespace RGRTU.Messenger.Client.Network
             finally
             {
                 _isConnected = false;
+                foreach (var incoming in _incomingFiles.Values)
+                    incoming.Buffer.Dispose();
+                _incomingFiles.Clear();
+
                 Log.Information("Клиент отключен от сервера");
                 OnDisconnected?.Invoke();
             }

@@ -62,12 +62,16 @@ CREATE TABLE IF NOT EXISTS Users
     CreatedAt    TEXT    NOT NULL,
     LastLoginAt  TEXT    NULL,
     IsInChat     INTEGER NOT NULL DEFAULT 0,
-    IsChatRemovedByAdmin INTEGER NOT NULL DEFAULT 0
+    IsChatRemovedByAdmin INTEGER NOT NULL DEFAULT 0,
+    IsChatInvitedByAdmin INTEGER NOT NULL DEFAULT 0,
+    HasLeftChat  INTEGER NOT NULL DEFAULT 0
 );";
             await command.ExecuteNonQueryAsync();
 
             await EnsureColumnExistsAsync(connection, "Users", "IsInChat", "INTEGER NOT NULL DEFAULT 0");
             await EnsureColumnExistsAsync(connection, "Users", "IsChatRemovedByAdmin", "INTEGER NOT NULL DEFAULT 0");
+            await EnsureColumnExistsAsync(connection, "Users", "IsChatInvitedByAdmin", "INTEGER NOT NULL DEFAULT 0");
+            await EnsureColumnExistsAsync(connection, "Users", "HasLeftChat", "INTEGER NOT NULL DEFAULT 0");
         }
 
         /// <summary>
@@ -159,8 +163,10 @@ ORDER BY Role DESC, IsBlocked ASC, Login ASC;";
 
             var command = connection.CreateCommand();
             command.CommandText = @"
-INSERT INTO Users (Login, PasswordHash, Salt, DisplayName, Role, IsBlocked, BlockReason, CreatedAt)
-VALUES ($login, $passwordHash, $salt, $displayName, $role, 0, NULL, $createdAt);
+INSERT INTO Users (Login, PasswordHash, Salt, DisplayName, Role, IsBlocked, BlockReason, CreatedAt,
+                   IsInChat, IsChatRemovedByAdmin, IsChatInvitedByAdmin, HasLeftChat)
+VALUES ($login, $passwordHash, $salt, $displayName, $role, 0, NULL, $createdAt,
+        0, 0, 0, 0);
 SELECT LAST_INSERT_ROWID();";
             command.Parameters.AddWithValue("$login", login);
             command.Parameters.AddWithValue("$passwordHash", passwordHash);
@@ -280,36 +286,36 @@ ORDER BY DisplayName COLLATE NOCASE, Login COLLATE NOCASE;";
         /// <summary>
         /// Добавляет или исключает пользователя из общего чата.
         /// </summary>
-        public async Task<bool> SetChatMemberAsync(int id, bool isInChat, bool? removedByAdmin = null)
+        public async Task<bool> SetChatMemberAsync(
+            int id,
+            bool isInChat,
+            bool removedByAdmin = false,
+            bool invitedByAdmin = false,
+            bool hasLeftChat = false)
         {
             await using var connection = CreateConnection();
             await connection.OpenAsync();
 
             var command = connection.CreateCommand();
-            if (removedByAdmin.HasValue)
-            {
-                command.CommandText = @"
+            command.CommandText = @"
 UPDATE Users
-SET IsInChat = $inChat, IsChatRemovedByAdmin = $removed
+SET IsInChat = $inChat,
+    IsChatRemovedByAdmin = $removed,
+    IsChatInvitedByAdmin = $invited,
+    HasLeftChat = $left
 WHERE Id = $id AND IsBlocked = 0;";
-                command.Parameters.AddWithValue("$removed", removedByAdmin.Value ? 1 : 0);
-            }
-            else
-            {
-                command.CommandText = @"
-UPDATE Users
-SET IsInChat = $inChat
-WHERE Id = $id AND IsBlocked = 0;";
-            }
-
             command.Parameters.AddWithValue("$inChat", isInChat ? 1 : 0);
+            command.Parameters.AddWithValue("$removed", removedByAdmin ? 1 : 0);
+            command.Parameters.AddWithValue("$invited", invitedByAdmin ? 1 : 0);
+            command.Parameters.AddWithValue("$left", hasLeftChat ? 1 : 0);
             command.Parameters.AddWithValue("$id", id);
 
             return await command.ExecuteNonQueryAsync() > 0;
         }
 
         /// <summary>
-        /// Позволяет пользователю самому вернуться в чат, если он не был исключён администратором.
+        /// Позволяет пользователю самому вернуться в чат, если он ранее вышел
+        /// или был приглашён администратором.
         /// </summary>
         public async Task<bool> TryJoinChatAsync(int id)
         {
@@ -319,8 +325,9 @@ WHERE Id = $id AND IsBlocked = 0;";
             var command = connection.CreateCommand();
             command.CommandText = @"
 UPDATE Users
-SET IsInChat = 1
-WHERE Id = $id AND IsBlocked = 0 AND IsChatRemovedByAdmin = 0;";
+SET IsInChat = 1, IsChatInvitedByAdmin = 0, HasLeftChat = 0
+WHERE Id = $id AND IsBlocked = 0 AND IsChatRemovedByAdmin = 0
+  AND (HasLeftChat = 1 OR IsChatInvitedByAdmin = 1);";
             command.Parameters.AddWithValue("$id", id);
 
             return await command.ExecuteNonQueryAsync() > 0;
@@ -402,7 +409,11 @@ WHERE Id = $id AND IsBlocked = 0 AND IsChatRemovedByAdmin = 0;";
                 IsInChat = !reader.IsDBNull(reader.GetOrdinal("IsInChat")) &&
                            reader.GetInt32(reader.GetOrdinal("IsInChat")) != 0,
                 IsChatRemovedByAdmin = !reader.IsDBNull(reader.GetOrdinal("IsChatRemovedByAdmin")) &&
-                                       reader.GetInt32(reader.GetOrdinal("IsChatRemovedByAdmin")) != 0
+                                       reader.GetInt32(reader.GetOrdinal("IsChatRemovedByAdmin")) != 0,
+                IsChatInvitedByAdmin = !reader.IsDBNull(reader.GetOrdinal("IsChatInvitedByAdmin")) &&
+                                       reader.GetInt32(reader.GetOrdinal("IsChatInvitedByAdmin")) != 0,
+                HasLeftChat = !reader.IsDBNull(reader.GetOrdinal("HasLeftChat")) &&
+                              reader.GetInt32(reader.GetOrdinal("HasLeftChat")) != 0
             };
         }
 

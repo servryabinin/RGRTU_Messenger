@@ -46,25 +46,36 @@ namespace RGRTU.Messenger.Shared.Network
         }
 
         /// <summary>
-        /// Читает один пакет из сетевого потока TCP. ВАЖНО: Этот метод блокирующий, он ждет, пока придут все байты!
+        /// Читает один пакет из сетевого потока TCP. Блокируется, пока пакет не будет прочитан целиком.
         /// </summary>
-        /// <param name="stream">Сетевой поток</param>
-        /// <returns></returns>
-        /// <exception cref="InvalidDataException"></exception>
         public static (MessageType Type, string PayloadJson) Deserialize(NetworkStream stream)
         {
-            using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
-
-            int typeInt = reader.ReadInt32();                             // 1. Читаем заголовок (8 байт)
-            int length = reader.ReadInt32();
+            byte[] header = ReadExactly(stream, 8);
+            int typeInt = BitConverter.ToInt32(header, 0);
+            int length = BitConverter.ToInt32(header, 4);
 
             if (length < AppConstants.MIN_PACKET_SIZE || length > AppConstants.MAX_PACKET_SIZE)
                 throw new InvalidDataException(AppConstants.ERROR_INVALID_PACKET_SIZE);
 
-            byte[] payloadBytes = reader.ReadBytes(length);               // 2. Читаем тело (JSON)
+            byte[] payloadBytes = length == 0 ? Array.Empty<byte>() : ReadExactly(stream, length);
             string json = Encoding.UTF8.GetString(payloadBytes);
 
             return ((MessageType)typeInt, json);
+        }
+
+        private static byte[] ReadExactly(NetworkStream stream, int count)
+        {
+            byte[] buffer = new byte[count];
+            int offset = 0;
+            while (offset < count)
+            {
+                int read = stream.Read(buffer, offset, count - offset);
+                if (read <= 0)
+                    throw new EndOfStreamException("Соединение закрыто во время чтения пакета.");
+                offset += read;
+            }
+
+            return buffer;
         }
 
         /// <summary>

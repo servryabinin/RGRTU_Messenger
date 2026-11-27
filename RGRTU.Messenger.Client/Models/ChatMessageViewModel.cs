@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
+using RGRTU.Messenger.Client.Services;
 using RGRTU.Messenger.Shared.Models.DTO;
 
 namespace RGRTU.Messenger.Client.Models
@@ -14,6 +15,14 @@ namespace RGRTU.Messenger.Client.Models
         private bool _isSelected;
         private bool _isSelectionMode;
         private double _highlightOpacity;
+        private bool _isMuted = true;
+        private bool _isUploading;
+        private double _uploadProgress;
+
+        private ImageSource? _imageSource;
+        private bool _imageSourceResolved;
+        private string? _localPath;
+        private bool _localPathResolved;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -62,20 +71,152 @@ namespace RGRTU.Messenger.Client.Models
             set { if (Math.Abs(_highlightOpacity - value) < 0.001) return; _highlightOpacity = value; OnPropertyChanged(); }
         }
 
+        public bool IsMuted
+        {
+            get => _isMuted;
+            set
+            {
+                if (_isMuted == value) return;
+                _isMuted = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(MuteIcon));
+            }
+        }
+
+        public string MuteIcon => IsMuted ? "🔇" : "🔊";
+
+        /// <summary>
+        /// Файл ещё передаётся на сервер (показывается только отправителю).
+        /// </summary>
+        public bool IsUploading
+        {
+            get => _isUploading;
+            set
+            {
+                if (_isUploading == value) return;
+                _isUploading = value;
+
+                if (!value)
+                {
+                    // После завершения передачи нужно заново прочитать локальные
+                    // превью (во время загрузки они намеренно не создавались).
+                    _imageSourceResolved = false;
+                    _imageSource = null;
+                    _localPathResolved = false;
+                    _localPath = null;
+                    OnPropertyChanged(nameof(ImageSource));
+                    OnPropertyChanged(nameof(VideoSourcePath));
+                }
+
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(UploadingVisibility));
+                OnPropertyChanged(nameof(AttachmentVisibility));
+                OnPropertyChanged(nameof(ImageVisibility));
+                OnPropertyChanged(nameof(VideoVisibility));
+                OnPropertyChanged(nameof(FileVisibility));
+            }
+        }
+
+        public double UploadProgress
+        {
+            get => _uploadProgress;
+            set
+            {
+                double clamped = Math.Clamp(value, 0, 100);
+                if (Math.Abs(_uploadProgress - clamped) < 0.01) return;
+                _uploadProgress = clamped;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(UploadProgressText));
+            }
+        }
+
+        public Visibility UploadingVisibility => IsUploading ? Visibility.Visible : Visibility.Collapsed;
+        public string UploadProgressText => $"Загрузка {UploadProgress:0}%";
+
         public string TimeText => Timestamp.ToString("HH:mm");
         public HorizontalAlignment Alignment => IsOwn ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         public Visibility SenderVisibility => IsOwn ? Visibility.Collapsed : Visibility.Visible;
         public Visibility TextVisibility => string.IsNullOrWhiteSpace(Text) ? Visibility.Collapsed : Visibility.Visible;
-        public Visibility AttachmentVisibility => HasAttachment ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility AttachmentVisibility => HasAttachment && !IsUploading ? Visibility.Visible : Visibility.Collapsed;
         public Visibility ReplyVisibility => string.IsNullOrWhiteSpace(ReplyToMessageId) ? Visibility.Collapsed : Visibility.Visible;
         public Visibility EditedVisibility => IsEdited ? Visibility.Visible : Visibility.Collapsed;
         public Visibility SelectionVisibility => IsSelectionMode && IsOwn ? Visibility.Visible : Visibility.Collapsed;
         public string SelectionMark => IsSelected ? "✔" : "";
 
         public bool HasAttachment => !string.IsNullOrWhiteSpace(AttachmentFileName) && !string.IsNullOrWhiteSpace(AttachmentBase64);
+        public bool IsImageAttachment => HasAttachment && MediaHelper.IsImage(AttachmentFileName);
+        public bool IsVideoAttachment => HasAttachment && MediaHelper.IsVideo(AttachmentFileName);
+        public bool IsFileAttachment => HasAttachment && !IsImageAttachment && !IsVideoAttachment;
+
+        public Visibility ImageVisibility => !IsUploading && IsImageAttachment ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility VideoVisibility => !IsUploading && IsVideoAttachment ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility FileVisibility => !IsUploading && IsFileAttachment ? Visibility.Visible : Visibility.Collapsed;
+
+        /// <summary>
+        /// Локальный временный файл вложения — нужен для MediaElement и внешнего проигрывателя.
+        /// </summary>
+        public string? LocalPath
+        {
+            get
+            {
+                if (IsUploading)
+                    return null;
+
+                if (!_localPathResolved)
+                {
+                    _localPathResolved = true;
+                    if (IsImageAttachment || IsVideoAttachment)
+                    {
+                        _localPath = MediaHelper.TryGetLocalPath(
+                            AttachmentBase64, AttachmentFileName ?? "file", MessageId);
+                    }
+                }
+
+                return _localPath;
+            }
+        }
+
+        /// <summary>
+        /// Путь к видеофайлу. Для не-видео возвращает null, чтобы MediaElement
+        /// не пытался открывать изображения и обычные файлы.
+        /// </summary>
+        public string? VideoSourcePath => IsVideoAttachment ? LocalPath : null;
+
+        public ImageSource? ImageSource
+        {
+            get
+            {
+                if (IsUploading)
+                    return null;
+
+                if (!_imageSourceResolved)
+                {
+                    _imageSourceResolved = true;
+                    if (IsImageAttachment)
+                        _imageSource = MediaHelper.TryLoadImage(AttachmentBase64);
+                }
+
+                return _imageSource;
+            }
+        }
+
         public string AttachmentSizeText => HasAttachment ? FormatSize(AttachmentFileSize) : string.Empty;
         public string AttachmentDisplay => HasAttachment ? $"📎 {AttachmentFileName}" : string.Empty;
         public string ReplyPreview => string.IsNullOrWhiteSpace(ReplyToText) ? "" : (ReplyToText.Length > 60 ? ReplyToText[..60] + "…" : ReplyToText);
+
+        /// <summary>
+        /// Обновляет прогресс передачи файла (0–100).
+        /// </summary>
+        public void SetUploadProgress(double percent) => UploadProgress = percent;
+
+        /// <summary>
+        /// Завершает передачу файла и показывает обычное превью вложения.
+        /// </summary>
+        public void CompleteUpload()
+        {
+            UploadProgress = 100;
+            IsUploading = false;
+        }
 
         public Brush BubbleBrush { get; init; } = Brushes.White;
         public Brush BorderBrush { get; init; } = Brushes.LightGray;

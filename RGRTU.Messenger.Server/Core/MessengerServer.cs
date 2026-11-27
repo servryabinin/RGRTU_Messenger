@@ -118,6 +118,19 @@ namespace RGRTU.Messenger.Server.Core
         }
 
         /// <summary>
+        /// Отправляет сообщение участникам общего чата, кроме указанного пользователя.
+        /// </summary>
+        public async Task BroadcastMessageToChatMembersExceptAsync(int excludeUserId, byte[] packetData)
+        {
+            foreach (var client in _activeClients.Values
+                         .Where(c => c.IsAuthenticated && c.IsInChat && c.UserId != excludeUserId)
+                         .ToArray())
+            {
+                await client.SendPacketAsync(packetData);
+            }
+        }
+
+        /// <summary>
         /// Формирует список участников чата для конкретной сессии.
         /// </summary>
         public async Task<RGRTU.Messenger.Shared.Models.DTO.Admin.ChatMembersResponseDto> BuildChatMembersResponseAsync(ClientSession session)
@@ -134,8 +147,10 @@ namespace RGRTU.Messenger.Server.Core
                     Login = u.Login,
                     DisplayName = u.DisplayName,
                     IsInChat = u.IsInChat,
-                    IsOnline = GetUserStatus(u.Id) == UserStatus.Online,
-                    IsChatRemovedByAdmin = u.IsChatRemovedByAdmin
+                    IsOnline = GetUserStatus(u.Id) != UserStatus.Offline,
+                    IsChatRemovedByAdmin = u.IsChatRemovedByAdmin,
+                    IsChatInvitedByAdmin = u.IsChatInvitedByAdmin,
+                    HasLeftChat = u.HasLeftChat
                 })
                 .ToList();
 
@@ -145,6 +160,8 @@ namespace RGRTU.Messenger.Server.Core
                 CanManage = isAdmin,
                 IsCurrentUserInChat = self?.IsInChat == true,
                 IsCurrentUserChatRemovedByAdmin = self?.IsChatRemovedByAdmin == true,
+                IsCurrentUserChatInvitedByAdmin = self?.IsChatInvitedByAdmin == true,
+                IsCurrentUserHasLeftChat = self?.HasLeftChat == true,
                 Members = members
             };
         }

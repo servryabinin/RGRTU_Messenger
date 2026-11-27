@@ -1,8 +1,8 @@
 <Window x:Class="RGRTU.Messenger.Client.Views.ChatAttachmentsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Вложения" Height="520" Width="700"
-        MinWidth="520" MinHeight="360"
+        Title="Вложения" Height="540" Width="720"
+        MinWidth="540" MinHeight="380"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource AppBackgroundBrush}">
     <Grid Margin="12">
@@ -24,13 +24,12 @@
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                <Setter Property="Padding" Value="4"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Focusable" Value="False"/>
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
-                                            <Border Background="Transparent" Padding="{TemplateBinding Padding}">
-                                                <ContentPresenter/>
-                                            </Border>
+                                            <ContentPresenter/>
                                         </ControlTemplate>
                                     </Setter.Value>
                                 </Setter>
@@ -38,23 +37,46 @@
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="#F8FBFF" BorderBrush="{StaticResource BorderBrushBlue}"
-                                        BorderThickness="1" CornerRadius="8" Padding="10" Margin="4">
-                                    <Grid>
+                                <Grid>
+                                    <!-- Разделитель дат: тонкая черта — дата — тонкая черта -->
+                                    <Grid Visibility="{Binding HeaderVisibility}" Margin="10,14,10,6">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding FileName}" FontSize="14" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource TextBrushBlue}" TextWrapping="Wrap"/>
-                                            <TextBlock Text="{Binding InfoText}" FontSize="12" Foreground="#64748B" Margin="0,2,0,0"/>
-                                        </StackPanel>
-                                        <Button Grid.Column="1" Content="Сохранить" Padding="12,6" Margin="12,0,0,0"
-                                                VerticalAlignment="Center" Style="{StaticResource LightButtonStyle}"
-                                                Click="SaveAttachment_Click" Tag="{Binding}"/>
+                                        <Border Height="1" Background="{StaticResource BorderBrushBlue}"
+                                                VerticalAlignment="Center"/>
+                                        <Border Grid.Column="1" Background="{StaticResource AccentLightBrush}"
+                                                CornerRadius="10" Padding="12,3" Margin="10,0">
+                                            <TextBlock Text="{Binding DateText}" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="#64748B"/>
+                                        </Border>
+                                        <Border Grid.Column="2" Height="1" Background="{StaticResource BorderBrushBlue}"
+                                                VerticalAlignment="Center"/>
                                     </Grid>
-                                </Border>
+
+                                    <!-- Файл -->
+                                    <Border Visibility="{Binding ItemVisibility}" Background="#F8FBFF"
+                                            BorderBrush="{StaticResource BorderBrushBlue}"
+                                            BorderThickness="1" CornerRadius="8" Padding="10" Margin="8,4">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Item.FileName}" FontSize="14" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource TextBrushBlue}" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding Item.InfoText}" FontSize="12"
+                                                           Foreground="#64748B" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="Сохранить" Padding="12,6" Margin="12,0,0,0"
+                                                    VerticalAlignment="Center" Style="{StaticResource LightButtonStyle}"
+                                                    Click="SaveAttachment_Click" Tag="{Binding Item}"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

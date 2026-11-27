@@ -11,5 +11,7 @@ namespace RGRTU.Messenger.Shared.Models.DTO.Admin
         public bool IsInChat { get; set; }
         public bool IsOnline { get; set; }
         public bool IsChatRemovedByAdmin { get; set; }
+        public bool IsChatInvitedByAdmin { get; set; }
+        public bool HasLeftChat { get; set; }
     }
 }

@@ -142,6 +142,10 @@ namespace RGRTU.Messenger.Shared.Network
         /// Клиент -> Сервер: вернуться в чат самостоятельно
         /// </summary>
         ChatJoin = 56,
+        /// <summary>
+        /// Сервер -> Клиент: ошибка при передаче файла (например, превышен размер).
+        /// </summary>
+        FileUploadError = 57,
 
         #endregion
 

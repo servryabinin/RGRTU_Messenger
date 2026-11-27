@@ -67,5 +67,15 @@ namespace RGRTU.Messenger.Server.Data
         /// Пока true, пользователь не может вернуться сам.
         /// </summary>
         public bool IsChatRemovedByAdmin { get; set; }
+
+        /// <summary>
+        /// Администратор снова добавил пользователя в чат, но пользователь ещё не вернулся.
+        /// </summary>
+        public bool IsChatInvitedByAdmin { get; set; }
+
+        /// <summary>
+        /// Пользователь самостоятельно покинул чат и может вернуться сам.
+        /// </summary>
+        public bool HasLeftChat { get; set; }
     }
 }

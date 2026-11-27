@@ -13,6 +13,8 @@ namespace RGRTU.Messenger.Shared.Models.DTO.Admin
         public bool CanManage { get; set; }
         public bool IsCurrentUserInChat { get; set; }
         public bool IsCurrentUserChatRemovedByAdmin { get; set; }
+        public bool IsCurrentUserChatInvitedByAdmin { get; set; }
+        public bool IsCurrentUserHasLeftChat { get; set; }
         public List<ChatMemberDto> Members { get; set; } = new();
     }
 }

@@ -23,5 +23,10 @@ namespace RGRTU.Messenger.Shared.Models.DTO
         /// Смещение (чтобы собрать файл в правильном порядке)
         /// </summary>
         public long Offset { get; set; }
+
+        /// <summary>
+        /// Является ли этот кусок последним.
+        /// </summary>
+        public bool IsLast { get; set; }
     }
 }

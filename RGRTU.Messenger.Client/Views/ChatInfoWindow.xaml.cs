@@ -5,31 +5,35 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using RGRTU.Messenger.Client.Models;
+using RGRTU.Messenger.Client.Network;
 
 namespace RGRTU.Messenger.Client.Views
 {
     public partial class ChatInfoWindow : Window
     {
+        private readonly MessengerClient _client;
+        private readonly ObservableCollection<ChatMemberViewModel> _members;
         private readonly List<AttachmentGroupViewModel> _groups;
 
-        public ChatInfoWindow(IEnumerable<ChatMemberViewModel> members, IEnumerable<ChatMessageViewModel> messages)
+        public ChatInfoWindow(
+            MessengerClient client,
+            ObservableCollection<ChatMemberViewModel> members,
+            IEnumerable<ChatMessageViewModel> messages)
         {
             InitializeComponent();
 
-            var memberList = members
-                .Where(m => m.IsInChat)
-                .OrderBy(m => m.DisplayName)
-                .Select(m => new ChatInfoMemberViewModel
-                {
-                    DisplayName = m.DisplayName,
-                    OnlineStatusText = m.OnlineStatusText
-                })
-                .ToList();
-            MembersDataGrid.ItemsSource = memberList;
+            _client = client;
+            _members = members;
+
+            bool canManage = members.Any(m => m.CanManage);
+            MemberActionColumn.Visibility = canManage ? Visibility.Visible : Visibility.Collapsed;
+
+            MembersDataGrid.ItemsSource = _members;
 
             var attachments = messages
-                .Where(m => m.HasAttachment)
+                .Where(m => m.HasAttachment && !m.IsUploading)
                 .Select(m => new AttachmentItemViewModel
                 {
                     FileName = m.AttachmentFileName ?? "file",
@@ -48,6 +52,45 @@ namespace RGRTU.Messenger.Client.Views
             };
 
             AttachmentGroupsListBox.ItemsSource = _groups;
+        }
+
+        private void ChatInfoWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Таблица всегда должна открываться с самого верха, а не с середины.
+            var scrollViewer = FindVisualChild<ScrollViewer>(MembersDataGrid);
+            scrollViewer?.ScrollToTop();
+
+            if (_members.Count > 0)
+                MembersDataGrid.ScrollIntoView(_members[0]);
+        }
+
+        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T typed)
+                    return typed;
+
+                var nested = FindVisualChild<T>(child);
+                if (nested != null)
+                    return nested;
+            }
+
+            return null;
+        }
+
+        private async void ChatMemberActionButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not int userId) return;
+
+            var member = _members.FirstOrDefault(m => m.Id == userId);
+            if (member == null) return;
+
+            if (member.IsInChat)
+                await _client.RemoveChatMemberAsync(userId);
+            else if (!member.IsChatInvitedByAdmin)
+                await _client.AddChatMemberAsync(userId);
         }
 
         private static AttachmentGroupViewModel BuildGroup(string title, List<AttachmentItemViewModel> all, Func<string, bool> predicate)
@@ -76,12 +119,6 @@ namespace RGRTU.Messenger.Client.Views
         }
     }
 
-    public class ChatInfoMemberViewModel
-    {
-        public string DisplayName { get; set; } = string.Empty;
-        public string OnlineStatusText { get; set; } = string.Empty;
-    }
-
     public class AttachmentGroupViewModel
     {
         public string Title { get; set; } = string.Empty;
@@ -98,7 +135,7 @@ namespace RGRTU.Messenger.Client.Views
         public DateTime Timestamp { get; set; }
 
         public string SizeText => FormatSize(SizeBytes);
-        public string InfoText => $"{SenderName} • {Timestamp:dd.MM.yyyy HH:mm} • {SizeText}";
+        public string InfoText => $"{SenderName} • {Timestamp:HH:mm} • {SizeText}";
 
         private static string FormatSize(long bytes)
         {
