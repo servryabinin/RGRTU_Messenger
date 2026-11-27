@@ -82,6 +82,8 @@ namespace RGRTU.Messenger.Server.Core
                 Log.Information("Администратор {Admin} создал пользователя Id={Id}, Login={Login}, Role={Role}",
                     session.Username, id, login, request.Role);
 
+                await _server.BroadcastChatMembersAsync();
+
                 return Ok($"Пользователь '{login}' создан");
             }
             catch (InvalidOperationException ex)

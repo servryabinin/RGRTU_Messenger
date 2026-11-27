@@ -265,10 +265,12 @@
                                                                     Margin="0,0,0,4" Cursor="Hand" Background="Black"
                                                                     ClipToBounds="True" Tag="{Binding}"
                                                                     MouseLeftButtonUp="MediaAttachment_Click">
-                                                                <Grid MaxWidth="360" MaxHeight="240">
+                                                                <Grid>
                                                                     <MediaElement Source="{Binding VideoSourcePath}"
                                                                                   LoadedBehavior="Manual" UnloadedBehavior="Manual"
-                                                                                  Stretch="Uniform" IsHitTestVisible="False"
+                                                                                  Stretch="Uniform" StretchDirection="DownOnly"
+                                                                                  MaxWidth="320" MaxHeight="240"
+                                                                                  IsHitTestVisible="False"
                                                                                   IsMuted="True" Volume="0"
                                                                                   Loaded="VideoMediaElement_Loaded"
                                                                                   MediaOpened="VideoMediaElement_MediaOpened"
